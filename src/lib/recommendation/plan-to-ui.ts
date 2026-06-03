@@ -6,6 +6,17 @@ import type { WeekendPlan } from "./types";
 const phaseToType = (phase: string): "scenic" | "food" | "hotel" =>
   phase === "eat" ? "food" : "scenic";
 
+/** 去掉引擎/Debug 文案，只保留用户可读描述 */
+function forDisplay(text: string): string {
+  return text
+    .replace(/（DAG编排[^）]*）/g, "")
+    .replace(/DAG编排（反馈\d+次）/g, "")
+    .replace(/，?直线约[\d.]+km/g, "")
+    .replace(/，?顺路[\d.]+km/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function planToUi(plan: WeekendPlan): {
   days: DayPlan[];
   routePoints: MapPoint[];
@@ -18,7 +29,7 @@ export function planToUi(plan: WeekendPlan): {
     time: slot.start,
     name: slot.poi.name,
     type: phaseToType(slot.phase),
-    description: slot.notes,
+    description: forDisplay(slot.notes),
     price: slot.poi.avgPrice > 0 ? `人均¥${slot.poi.avgPrice}` : "免费/步行",
     status:
       slot.phase === "eat" && plan.bookings.some((b) => b.type === "hold_table")
@@ -31,7 +42,7 @@ export function planToUi(plan: WeekendPlan): {
     {
       day: 1,
       date: "今天",
-      period: plan.summary,
+      period: forDisplay(plan.summary),
       items,
     },
   ];
@@ -45,7 +56,7 @@ export function planToUi(plan: WeekendPlan): {
       x,
       y,
       inRoute: true,
-      description: slot.notes,
+      description: forDisplay(slot.notes),
       price: slot.poi.avgPrice > 0 ? `¥${slot.poi.avgPrice}` : "免费",
     };
   });

@@ -7,7 +7,8 @@ import mascotImg from "@/assets/cat-mascot.png";
 import QuickFillTemplate from "@/components/QuickFillTemplate";
 import ChatItineraryCard from "@/components/chat/ChatItineraryCard";
 import ChatRouteMap, { type MapPoint } from "@/components/chat/ChatRouteMap";
-import ArticleCard from "@/components/chat/ArticleCard";
+import ArticleCard, { parseArticle } from "@/components/chat/ArticleCard";
+import ContinueExplore from "@/components/chat/ContinueExplore";
 import LocationPage from "@/components/LocationPage";
 import LocationPermissionModal from "@/components/LocationPermissionModal";
 import HistorySidebar from "@/components/HistorySidebar";
@@ -391,7 +392,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                     <div className="flex-1 min-w-0">
 
                       {!msg.streaming && /^\s*#\s/.test(msg.content) ? (
-                        <ArticleCard content={msg.content} onSuggestionClick={(text) => handleSend(text)} />
+                        <ArticleCard content={msg.content} compact={!!msg.itinerary?.length} />
                       ) : (
                         <div
                           className="bg-card rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed border border-border/70 prose prose-sm max-w-none"
@@ -427,6 +428,12 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                               onUpdateRoute={(points) => handleUpdateRoute(msg.id, points)}
                               onAddToRoute={(point) => handleAddToRoute(msg.id, point)}
                               onRemoveFromRoute={(pointId) => handleRemoveFromRoute(msg.id, pointId)}
+                            />
+                          )}
+                          {!msg.streaming && /^\s*#\s/.test(msg.content) && (
+                            <ContinueExplore
+                              suggestions={parseArticle(msg.content).suggestions}
+                              onSuggestionClick={(text) => handleSend(text)}
                             />
                           )}
                         </div>

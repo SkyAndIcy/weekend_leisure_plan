@@ -1,11 +1,22 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, Utensils, Hotel, Clock, CheckCircle, ExternalLink, ChevronDown, ChevronUp, MessageCircle, Sparkles, Navigation, Calendar, Star, Ticket } from "lucide-react";
+import { MapPin, Utensils, Hotel, Clock, CheckCircle, ChevronDown, ChevronUp, Sparkles, Navigation, Calendar, Star, Ticket } from "lucide-react";
 import mascotImg from "@/assets/zhoumoumiao-mascot.png";
 
 interface ArticleCardProps {
   content: string;
-  onSuggestionClick?: (text: string) => void;
+  /** 下方已有行程表时，只展示摘要，避免与行程表重复 */
+  compact?: boolean;
+}
+
+function extractArrangeBullets(sections: Section[]): string[] {
+  const sec = sections.find((s) => /一键安排/.test(s.title) || /订座|排队|同行/.test(s.body));
+  if (!sec) return [];
+  return sec.body
+    .split("\n")
+    .map((l) => l.replace(/^[*\-]\s+/, "").replace(/\*+/g, "").trim())
+    .filter((l) => l.length > 2)
+    .slice(0, 3);
 }
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -75,7 +86,7 @@ const TAG_COLORS: Record<string, string> = {
 };
 
 // ─── parser ───────────────────────────────────────────────────────────────────
-function parseArticle(raw: string): ParsedArticle {
+export function parseArticle(raw: string): ParsedArticle {
   const lines = raw.split("\n");
 
   // title: first h1 or h2
@@ -309,6 +320,13 @@ const SectionCard = ({
   const quoteMatch = section.body.match(/>\s?"([^"\n]+)"/);
   const quote = quoteMatch ? quoteMatch[1] : null;
 
+  const bodyLines = cleanBody
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => l !== section.title && !l.startsWith(section.title));
+  const displayBody = bodyLines.find((l) => l.length > 8 && !/^\d{1,2}:\d{2}/.test(l)) ?? bodyLines[0] ?? "";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -340,23 +358,19 @@ const SectionCard = ({
             exit={{ height: 0 }}
             className="overflow-hidden"
           >
-            {/* Main image */}
-            <div className="relative h-44 overflow-hidden">
+            <div className="relative h-32 overflow-hidden">
               <img
                 src={pickImg(mainImgType, mainImgSeed)}
                 alt={section.title}
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              <div className="absolute bottom-3 left-4 right-4">
-                <h3 className="text-white font-bold text-base drop-shadow">{section.title}</h3>
-              </div>
             </div>
 
             <div className="px-4 py-3 space-y-3">
-              {/* Body text */}
-              <p className="text-[13.5px] text-foreground/80 leading-relaxed">{cleanBody.split("\n")[0]}</p>
+              {displayBody && (
+                <p className="text-[13.5px] text-foreground/80 leading-relaxed">{displayBody}</p>
+              )}
 
               {/* Pull quote */}
               {quote && (
@@ -454,10 +468,11 @@ const MiniRouteMap = ({ places }: { places: PlaceHint[] }) => {
 };
 
 // ─── Main ArticleCard ─────────────────────────────────────────────────────────
-const ArticleCard = ({ content, onSuggestionClick }: ArticleCardProps) => {
+const ArticleCard = ({ content, compact = false }: ArticleCardProps) => {
   const today = new Date();
   const dateStr = `${today.getFullYear()}.${today.getMonth() + 1}.${today.getDate()}`;
   const parsed = parseArticle(content);
+  const arrangeBullets = extractArrangeBullets(parsed.sections);
 
   // Collect all places for route section
   const allPlaces = parsed.sections.flatMap((s) => s.places).slice(0, 6);
@@ -515,8 +530,7 @@ const ArticleCard = ({ content, onSuggestionClick }: ArticleCardProps) => {
             </p>
           )}
 
-          {/* Quick stats */}
-          {parsed.sections.length > 0 && (
+          {!compact && parsed.sections.length > 0 && (
             <div className="flex gap-2 mt-3">
               <div className="flex items-center gap-1 bg-card/80 rounded-full px-2.5 py-1 border border-border text-[11px] text-muted-foreground">
                 <Clock className="w-3 h-3" /> {parsed.sections.length} 个时段
@@ -526,29 +540,39 @@ const ArticleCard = ({ content, onSuggestionClick }: ArticleCardProps) => {
                   <MapPin className="w-3 h-3" /> {allPlaces.length} 个地点
                 </div>
               )}
-              <div className="flex items-center gap-1 bg-card/80 rounded-full px-2.5 py-1 border border-border text-[11px] text-muted-foreground">
-                <Star className="w-3 h-3 fill-primary text-primary" /> AI精选
-              </div>
             </div>
+          )}
+
+          {compact && arrangeBullets.length > 0 && (
+            <ul className="mt-3 space-y-1 text-[12px] text-foreground/80">
+              {arrangeBullets.map((line) => (
+                <li key={line} className="flex gap-1.5">
+                  <span className="text-primary">·</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </header>
 
       {/* ── 分：SECTION DETAILS ──────────────────────────────────────────────── */}
-      {parsed.sections.length > 0 && (
+      {!compact && parsed.sections.filter((s) => !/一键安排/.test(s.title)).length > 0 && (
         <section className="px-4 py-4 space-y-3">
           <h2 className="text-[13px] font-bold text-muted-foreground flex items-center gap-1.5 mb-1">
             <span className="w-1 h-4 rounded-full bg-primary inline-block" />
             行程详情
           </h2>
-          {parsed.sections.map((sec, i) => (
-            <SectionCard key={i} section={sec} globalIdx={i} />
-          ))}
+          {parsed.sections
+            .filter((s) => !/一键安排/.test(s.title))
+            .map((sec, i) => (
+              <SectionCard key={i} section={sec} globalIdx={i} />
+            ))}
         </section>
       )}
 
       {/* ── 路线：ROUTE MAP + TIMELINE ──────────────────────────────────────── */}
-      {allPlaces.length > 0 && (
+      {!compact && allPlaces.length > 0 && (
         <section className="px-4 pb-4">
           <h2 className="text-[13px] font-bold text-muted-foreground flex items-center gap-1.5 mb-3">
             <span className="w-1 h-4 rounded-full bg-meituan-blue inline-block" />
@@ -573,29 +597,8 @@ const ArticleCard = ({ content, onSuggestionClick }: ArticleCardProps) => {
         </section>
       )}
 
-      {/* ── 总：FOOTER SUGGESTIONS ──────────────────────────────────────────── */}
-      <footer className="px-4 pb-5 pt-1 border-t border-border/60 bg-muted/30">
-        <div className="flex items-center gap-1.5 mt-3 mb-2.5">
-          <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[12px] font-semibold text-muted-foreground">继续探索</span>
-        </div>
-        <div className="space-y-1.5">
-          {parsed.suggestions.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => onSuggestionClick?.(s)}
-              className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl bg-card border border-border hover:border-primary hover:shadow-sm transition-all group"
-            >
-              <span className="w-5 h-5 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                {i + 1}
-              </span>
-              <span className="text-[13px] text-foreground/80 group-hover:text-foreground transition-colors">{s}</span>
-              <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto shrink-0 group-hover:text-primary transition-colors" />
-            </button>
-          ))}
-        </div>
-
-        <p className="text-center text-[10px] text-muted-foreground mt-4">内容由 AI 生成 · 仅供参考</p>
+      <footer className="px-4 py-3 border-t border-border/60">
+        <p className="text-center text-[10px] text-muted-foreground">内容由 AI 生成 · 仅供参考</p>
       </footer>
     </motion.article>
   );

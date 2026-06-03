@@ -38,8 +38,6 @@ export async function buildWeekendPlanCore(
   const play = combo.play.poi;
   const eat = combo.eat.poi;
   const extra = combo.extra?.poi ?? null;
-  const ruleNote = "（DAG编排·并行召回+跨池联动+反馈环）";
-
   const bookings = [];
   const queue = mockQueueStatus(eat);
   toolTrace.push(queue.trace);
@@ -68,7 +66,7 @@ export async function buildWeekendPlanCore(
       end: fmtClock(playEnd),
       phase: "play",
       poi: play,
-      notes: `${play.description}${ruleNote}，直线约${combo.play.distanceKm.toFixed(1)}km`,
+      notes: play.description,
     },
     {
       start: fmtClock(playEnd + transit1),
@@ -77,8 +75,8 @@ export async function buildWeekendPlanCore(
       poi: eat,
       notes:
         hold.booking.status === "ok"
-          ? `已订座；${queue.queueMin > 0 ? `预计排队${queue.queueMin}分钟` : "无需排队"}${ruleNote}，顺路${combo.routeKm.toFixed(1)}km`
-          : `${hold.booking.detail}${ruleNote}`,
+          ? `已订座；${queue.queueMin > 0 ? `预计排队${queue.queueMin}分钟` : "无需排队"}`
+          : hold.booking.detail,
     },
   ];
 
@@ -88,7 +86,7 @@ export async function buildWeekendPlanCore(
       end: fmtClock(extraEnd),
       phase: "extra",
       poi: extra,
-      notes: `${extra.description}${ruleNote}`,
+      notes: extra.description,
     });
   }
 
@@ -116,7 +114,7 @@ export async function buildWeekendPlanCore(
   }));
 
   return {
-    summary: `${scenarioLabel} · ${effective.durationHours[0]}-${effective.durationHours[1]}小时 · ${effective.hardMaxDistanceKm}km内 · DAG编排（反馈${retryCount}次）`,
+    summary: `${scenarioLabel} · ${effective.durationHours[0]}-${effective.durationHours[1]}小时 · ${effective.hardMaxDistanceKm}km内`,
     scenario: effective.scenario,
     homeLabel: home.label,
     homeLat: home.lat,
