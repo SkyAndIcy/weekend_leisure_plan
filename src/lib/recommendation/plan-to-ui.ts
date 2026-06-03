@@ -24,18 +24,14 @@ export function planToUi(plan: WeekendPlan): {
 } {
   const home = { lat: plan.homeLat, lng: plan.homeLng, label: plan.homeLabel };
 
-  const items = plan.timeline.map((slot, i) => ({
+  const items = plan.timeline.map((slot) => ({
     id: slot.poi.id,
     time: slot.start,
     name: slot.poi.name,
     type: phaseToType(slot.phase),
-    description: forDisplay(slot.notes),
+    description: forDisplay(slot.notes).replace(/^已订座[；;]\s*/, ""),
     price: slot.poi.avgPrice > 0 ? `人均¥${slot.poi.avgPrice}` : "免费/步行",
-    status:
-      slot.phase === "eat" && plan.bookings.some((b) => b.type === "hold_table")
-        ? ("pending" as const)
-        : ("unbooked" as const),
-    code: i === 1 ? "订座单 MOCK" : undefined,
+    status: "unbooked" as const,
   }));
 
   const days: DayPlan[] = [

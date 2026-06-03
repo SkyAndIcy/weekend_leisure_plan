@@ -28,13 +28,15 @@ const TimelineItem = ({
   isLast,
   onRefresh,
   onDelete,
+  onBook,
 }: {
   item: ItineraryItem;
   isLast: boolean;
   onRefresh: () => void;
   onDelete: () => void;
+  onBook: () => void;
 }) => {
-  const [booked, setBooked] = useState(item.status !== "unbooked");
+  const booked = item.status !== "unbooked";
   const Icon = typeIcon[item.type];
   const tc = typeColor[item.type];
   const StatusIcon = statusConfig[item.status].icon;
@@ -85,7 +87,8 @@ const TimelineItem = ({
               </button>
             </div>
             <button
-              onClick={() => setBooked(!booked)}
+              type="button"
+              onClick={onBook}
               className={`flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full transition-all ${
                 booked
                   ? "bg-meituan-green/10 text-meituan-green"
@@ -112,6 +115,31 @@ const ChatItineraryCard = ({ days, onUpdate, onAddToTrip }: Props) => {
   const handleDelete = (dayIdx: number, itemId: string) => {
     const updated = days.map((d, i) =>
       i === dayIdx ? { ...d, items: d.items.filter((item) => item.id !== itemId) } : d
+    );
+    onUpdate(updated);
+  };
+
+  const handleBook = (dayIdx: number, itemId: string) => {
+    const updated = days.map((d, i) =>
+      i === dayIdx
+        ? {
+            ...d,
+            items: d.items.map((item) =>
+              item.id === itemId
+                ? item.status === "unbooked"
+                  ? {
+                      ...item,
+                      status: "pending" as const,
+                      code: `MT${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 9000 + 1000)}`,
+                      description: item.description.includes("已订座")
+                        ? item.description
+                        : `${item.description.replace(/请在行程表点击.*$/, "").trim()}；已订座`,
+                    }
+                  : { ...item, status: "unbooked" as const, code: undefined }
+                : item,
+            ),
+          }
+        : d,
     );
     onUpdate(updated);
   };
@@ -177,6 +205,7 @@ const ChatItineraryCard = ({ days, onUpdate, onAddToTrip }: Props) => {
                       isLast={itemIdx === day.items.length - 1}
                       onRefresh={() => handleRefresh(dayIdx, item.id)}
                       onDelete={() => handleDelete(dayIdx, item.id)}
+                      onBook={() => handleBook(dayIdx, item.id)}
                     />
                   ))}
                 </div>

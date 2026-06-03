@@ -44,7 +44,6 @@ export async function buildWeekendPlanCore(
 
   const party = effective.partyTotal ?? (effective.scenario === "friends" ? 4 : 3);
   const hold = mockHoldTable(eat, party);
-  bookings.push(hold.booking);
   toolTrace.push(hold.trace);
 
   if (effective.scenario === "family" && /蛋糕|鲜花|生日/.test(userText)) {
@@ -74,9 +73,9 @@ export async function buildWeekendPlanCore(
       phase: "eat",
       poi: eat,
       notes:
-        hold.booking.status === "ok"
-          ? `已订座；${queue.queueMin > 0 ? `预计排队${queue.queueMin}分钟` : "无需排队"}`
-          : hold.booking.detail,
+        queue.queueMin > 0
+          ? `推荐就餐，高峰约排队${queue.queueMin}分钟，请在行程表点击「立即预定」`
+          : "推荐就餐，请在行程表点击「立即预定」",
     },
   ];
 
@@ -97,7 +96,7 @@ export async function buildWeekendPlanCore(
         ? "中午12点"
         : `下午${effective.departureHour}点`;
 
-  const notifyText = `搞定了，${departPhrase}出发：先去${play.name}（${fmtClock(departMin)}-${fmtClock(playEnd)}），再去${eat.name}吃饭（${hold.booking.detail}）${extra ? `，最后${extra.name}收尾` : ""}。`;
+  const notifyText = `搞定了，${departPhrase}出发：先去${play.name}（${fmtClock(departMin)}-${fmtClock(playEnd)}），再去${eat.name}用餐（记得在行程表点「立即预定」）${extra ? `，最后${extra.name}收尾` : ""}。`;
 
   toolTrace.push(mockNotifyContact(notifyText));
 
