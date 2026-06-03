@@ -23,7 +23,9 @@ FRIDAY_APP_ID=<你的AppId>
 FRIDAY_MODEL=gpt-4o-mini
 ```
 
-然后 `npm start`。开发模式下 `recommend` / `chat` 由 Vite 本地代理直连 [Friday One-API](https://aigc.sankuai.com/v1/openai/native/chat/completions)，鉴权方式为 `Authorization: Bearer {AppId}`，**不需要登录 Friday**。
+然后 `npm start`。开发模式下 **`plan` / `recommend` / `chat`** 由 Vite 本地代理：`plan` 在服务端跑完整 DAG + Mock 履约，并直连 [Friday One-API](https://aigc.sankuai.com/v1/openai/native/chat/completions)，鉴权为 `Authorization: Bearer {AppId}`，**不需要登录 Friday**。
+
+调试可在 `.env` 设 `VITE_PLAN_MODE=client`，改在浏览器内跑 DAG（仍会单独调 `recommend`）。
 
 ### 上线部署（Supabase Edge）
 
@@ -32,7 +34,13 @@ brew install supabase/tap/supabase   # 未安装时
 supabase login
 supabase link --project-ref <project-ref>
 supabase secrets set FRIDAY_APP_ID=<你的AppId> FRIDAY_MODEL=gpt-4o-mini
-supabase functions deploy recommend && supabase functions deploy chat
+supabase functions deploy plan && supabase functions deploy recommend && supabase functions deploy chat
 ```
+
+| Edge 函数 | 职责 |
+|-----------|------|
+| `plan` | 语义理解 + DAG 召回/组合 + Mock 订座/排队/分享（前端主路径） |
+| `recommend` | 仅 AI 语义 JSON（兼容/调试） |
+| `chat` | 流式文案润色（注入 planContext，不改 POI） |
 
 勿将 AppId 提交 Git。

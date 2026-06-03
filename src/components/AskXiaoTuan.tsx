@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { streamChatCompletion } from "@/lib/chat-stream";
 import { fridayTracePayload } from "@/lib/friday-trace";
 import { AiSemanticError } from "@/lib/recommendation/ai-semantic";
+import { PlanningError } from "@/lib/recommendation/plan-api";
 import { buildWeekendPlan, planContextForLlm } from "@/lib/recommendation/planner";
 import { planToUi } from "@/lib/recommendation/plan-to-ui";
 import type { WeekendPlan } from "@/lib/recommendation/types";
@@ -108,9 +109,11 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
       const content =
         e instanceof AiSemanticError
           ? `AI 语义理解失败：${e.message}`
-          : e instanceof Error
-            ? e.message
-            : "行程规划失败，请稍后再试。";
+          : e instanceof PlanningError
+            ? `行程规划失败：${e.message}`
+            : e instanceof Error
+              ? e.message
+              : "行程规划失败，请稍后再试。";
       setMessages((prev) => [
         ...prev,
         { id: assistantId, role: "assistant", content },

@@ -20,7 +20,7 @@
 | 编排 | 可执行时间轴 + 履约 | 固定缓冲 + Mock 工具链 |
 | 展示 | 杂志风文案 | Edge `chat` 润色，**不得改已选 POI** |
 
-数据现状：POI 来自 `src/data/poi-catalog.ts`（北京 Mock）；距离为直线 km，生产可换 LBS / 美团检索 API。
+数据现状：POI 由 `shared/planning/beijing-zones.ts` 按 **北京 16 区 34 个商圈** 生成（每区至少 1 景点 + 1 餐厅）；围栏内无候选时 **全城最近门店兜底**。距离为直线 km，生产可换 LBS / 美团检索 API。
 
 ### 1.2 约束理解（Planning 输入）
 
@@ -77,9 +77,11 @@
 ```text
 [前端] 用户发送
     │
-    ├─► Edge recommend (Friday/Lovable)     … ai_semantic_extract（仅语义 JSON）
+    ├─► Edge plan（默认）或浏览器 client 模式
+    │       ├─ ai_semantic_extract（Friday，经 recommend 逻辑）
+    │       └─ DAG 编排（`runPlanningDag`）… 召回 + 组合推荐（无真实 HTTP 检索）
     │
-    ├─► DAG 本地编排（`runPlanningDag`）     … 召回 + 组合推荐（无真实 HTTP 检索）
+    ├─► [可选] Edge recommend 单独调用         … 仅语义 JSON（调试）
     │       ├─ mock: attractions_nearby      … 约束汇聚后，记录检索意图（trace）
     │       ├─ 并行召回 → mock: restaurants_search … 每轮召回后（含反馈重试轮）
     │       └─ 跨池联动 → 组合评估 → [反馈环] → 履约修补（满座换店）

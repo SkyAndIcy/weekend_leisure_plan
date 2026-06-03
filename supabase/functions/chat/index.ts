@@ -4,6 +4,8 @@ import {
   fridayErrorMessage,
   getFridayConfig,
 } from "../_shared/friday_llm.ts";
+import { augmentChatMessages } from "../_shared/chat_augment.ts";
+import { CHAT_SYSTEM } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,45 +13,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_WEEKEND = `你是"小团"，美团本地周末短时活动规划助手（4–6小时，下午出发）。
-
-**重要**：用户消息前会附带已由规则引擎+Mock工具生成的【结构化方案 planContext】。你必须：
-1. **不得编造** planContext 之外的 POI/店名；
-2. 用杂志风 Markdown 润色该方案，突出「玩→吃→加项」与订座/排队状态；
-3. 结尾用一句话复述 notify 文案风格（搞定了，X点出发…）。
-
-**输出结构**（不要代码块包裹）：
-
-# 周末半日 · {主题一句话}
-
-{2句导语：场景+取舍}
-
-### 下午｜{玩·小标题}
-{自然段，**加粗**时间与店名}
-
-### 傍晚｜{吃·小标题}
-{餐厅、订座/排队、饮食诉求如减脂}
-
-### 收尾｜{加项小标题}
-{Citywalk/展览等}
-
-### 一键安排
-- 订座/排队：{来自 planContext}
-- 发给同行：{notify 摘要}
-
-非规划类闲聊可简短回答，不必套模板。`;
-
 async function chatCompletions(
   messages: { role: string; content: string }[],
   stream: boolean,
-  traceCtx?: { traceId?: string; sessionId?: string },
+  traceCtx?: { traceId?: string; sessionId?: string; queryId?: string },
 ): Promise<Response> {
   const friday = getFridayConfig();
   if (friday) {
     return fridayChatCompletions(
       friday,
       {
-        messages: [{ role: "system", content: SYSTEM_WEEKEND }, ...messages],
+        messages: [{ role: "system", content: CHAT_SYSTEM }, ...messages],
         stream,
         max_tokens: 4096,
         temperature: 0.7,
@@ -73,7 +47,7 @@ async function chatCompletions(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [{ role: "system", content: SYSTEM_WEEKEND }, ...messages],
+      messages: [{ role: "system", content: CHAT_SYSTEM }, ...messages],
       stream,
     }),
   });
@@ -86,23 +60,7 @@ serve(async (req) => {
     const { messages, planContext, location, traceId, sessionId, queryId } =
       await req.json();
 
-    const contextBlock = [
-      planContext ? `【结构化方案 planContext】\n${planContext}` : "",
-      location?.label ? `【出发点】${location.label} ${location.address || ""}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    const augmented = [...messages];
-    if (contextBlock && augmented.length > 0) {
-      const last = augmented[augmented.length - 1];
-      if (last.role === "user") {
-        augmented[augmented.length - 1] = {
-          ...last,
-          content: `${contextBlock}\n\n---\n用户原话：${last.content}`,
-        };
-      }
-    }
+    const augmented = augmentChatMessages(messages ?? [], planContext, location);
 
     const response = await chatCompletions(augmented, true, {
       traceId,

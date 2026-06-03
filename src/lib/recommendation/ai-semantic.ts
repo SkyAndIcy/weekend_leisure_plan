@@ -1,6 +1,14 @@
 import { fridayTracePayload } from "@/lib/friday-trace";
-import type { Constraints, Scenario, ToolTraceEntry } from "./types";
+import {
+  mergeConstraints,
+  parseAiSemantic,
+} from "../../../shared/planning/semantic-merge";
+import type { AiSemanticExtract } from "../../../shared/planning/semantic-types";
+import type { Constraints, ToolTraceEntry } from "./types";
 import { extractConstraints } from "./constraints";
+
+export type { AiSemanticExtract } from "../../../shared/planning/semantic-types";
+export { mergeConstraints } from "../../../shared/planning/semantic-merge";
 
 export class AiSemanticError extends Error {
   constructor(message: string) {
@@ -9,91 +17,14 @@ export class AiSemanticError extends Error {
   }
 }
 
-/** AI 语义抽取结果（不负责选店） */
-export interface AiSemanticExtract {
-  scenario: Scenario;
-  departureHour: number;
-  maxDistanceKm: number;
-  durationHours: [number, number];
-  childAge: number | null;
-  partyTotal: number | null;
-  lowCalPreferred: boolean;
-  locationBlocks: string[];
-  wantExtra: boolean;
-  intentSummary: string;
-}
-
-/** 开发态走 Vite 本地代理（需 .env 配置 FRIDAY_APP_ID）；生产走 Supabase Edge */
+/** 开发态走 Vite 本地代理；生产走 Supabase Edge */
 const EXTRACT_URL = import.meta.env.DEV
   ? "/functions/v1/recommend"
   : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recommend`;
 
-function asScenario(v: unknown): Scenario {
-  return v === "friends" ? "friends" : v === "family" ? "family" : "unknown";
-}
-
-function parseDuration(v: unknown): [number, number] {
-  if (Array.isArray(v) && v.length >= 2) {
-    const a = Number(v[0]);
-    const b = Number(v[1]);
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      return [Math.min(a, b), Math.max(a, b)];
-    }
-  }
-  return [4, 6];
-}
-
-function parseLocationBlocks(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return [...new Set(v.map(String).filter(Boolean))];
-}
-
-function parseAiSemantic(raw: Record<string, unknown>): AiSemanticExtract | null {
-  const scenario = asScenario(raw.scenario);
-  const departureHour =
-    typeof raw.departureHour === "number" && raw.departureHour >= 0 && raw.departureHour <= 23
-      ? raw.departureHour
-      : null;
-  const maxDistanceKm =
-    typeof raw.maxDistanceKm === "number" && raw.maxDistanceKm > 0 ? raw.maxDistanceKm : null;
-  if (departureHour === null || maxDistanceKm === null) return null;
-
-  return {
-    scenario,
-    departureHour,
-    maxDistanceKm,
-    durationHours: parseDuration(raw.durationHours),
-    childAge: typeof raw.childAge === "number" ? raw.childAge : null,
-    partyTotal: typeof raw.partyTotal === "number" ? raw.partyTotal : null,
-    lowCalPreferred: Boolean(raw.lowCalPreferred),
-    locationBlocks: parseLocationBlocks(raw.locationBlocks),
-    wantExtra: raw.wantExtra !== false,
-    intentSummary: String(raw.intentSummary ?? raw.rationale ?? "").trim(),
-  };
-}
-
-/** 将 AI 语义合并进规则 baseline */
-export function mergeConstraints(base: Constraints, ai: AiSemanticExtract): Constraints {
-  const blocks = [...base.locationBlocks];
-  for (const b of ai.locationBlocks) {
-    if (!blocks.includes(b)) blocks.push(b);
-  }
-  return {
-    ...base,
-    scenario: ai.scenario !== "unknown" ? ai.scenario : base.scenario,
-    departureHour: ai.departureHour,
-    maxDistanceKm: ai.maxDistanceKm,
-    durationHours: ai.durationHours,
-    childAge: ai.childAge ?? base.childAge,
-    partyTotal: ai.partyTotal ?? base.partyTotal,
-    lowCalPreferred: ai.lowCalPreferred || base.lowCalPreferred,
-    locationBlocks: blocks,
-  };
-}
-
 /**
  * 调用 Edge `recommend`（Friday / Lovable）做 **语义抽取**。
- * 召回与选店由 DAG 规则流水线完成。
+ * 召回与选店由 DAG 规则流水线完成（或由 plan 接口一并完成）。
  */
 export async function fetchAiSemanticExtract(
   userText: string,
@@ -126,7 +57,7 @@ export async function fetchAiSemanticExtract(
     });
   } catch {
     throw new AiSemanticError(
-      "无法连接 AI 语义服务。请检查网络，并确认已部署 recommend 且配置 FRIDAY_APP_ID。",
+      "无法连接 AI 语义服务。请检查网络，并确认已部署 recommend/plan 且配置 FRIDAY_APP_ID。",
     );
   }
 
@@ -141,7 +72,7 @@ export async function fetchAiSemanticExtract(
     const detail =
       typeof data.error === "string" ? data.error : `服务返回 ${resp.status}`;
     throw new AiSemanticError(
-      `${detail}。请部署 recommend 并配置 FRIDAY_APP_ID（或 LOVABLE_API_KEY）。`,
+      `${detail}。请部署 recommend/plan 并配置 FRIDAY_APP_ID（或 LOVABLE_API_KEY）。`,
     );
   }
 

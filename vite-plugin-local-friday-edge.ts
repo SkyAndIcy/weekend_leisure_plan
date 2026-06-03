@@ -1,56 +1,17 @@
 /**
- * 本地开发：把 /functions/v1/recommend|chat 代理到 Friday One-API，
+ * 本地开发：把 /functions/v1/recommend|chat|plan 代理到 Friday + 规则 DAG，
  * 无需 supabase login / deploy。AppId 从 .env 的 FRIDAY_APP_ID 读取（勿加 VITE_ 前缀）。
  */
 import type { Plugin, ViteDevServer } from "vite";
 import { loadEnv } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
+import { RECOMMEND_SYSTEM, CHAT_SYSTEM } from "./supabase/functions/_shared/prompts";
+import { augmentChatMessages } from "./supabase/functions/_shared/chat_augment";
+import { buildWeekendPlanCore } from "./shared/planning/build-plan";
+import { parseAiSemantic } from "./shared/planning/semantic-merge";
+import { extractConstraints } from "./shared/planning/constraints";
 
 const FRIDAY_BASE = "https://aigc.sankuai.com/v1/openai/native/chat/completions";
-
-const RECOMMEND_SYSTEM = `你是美团周末本地活动规划的「语义理解」模块。根据用户自然语言与出发点，抽取结构化约束，**不要**选择具体 POI、不要编造店名。
-
-**输出仅一段合法 JSON**，无 Markdown。字段说明：
-- scenario: "family" | "friends" | "unknown"
-- departureHour: 0-23，默认 14
-- maxDistanceKm: 正数，默认 8；"别太远/附近"可设为 5
-- durationHours: [最短小时, 最长小时]，周末半日通常 [4,6]
-- childAge: 儿童年龄或 null
-- partyTotal: 人数或 null
-- lowCalPreferred: 是否低脂/减脂诉求
-- locationBlocks: 用户提到的商圈/区域关键词数组，如 ["三里屯","望京"]
-- wantExtra: 是否需要加项（citywalk/展览等），默认 true
-- intentSummary: 一句话概括用户诉求
-
-参考【规则预解析】但可修正其错误理解。`;
-
-const CHAT_SYSTEM = `你是"小团"，美团本地周末短时活动规划助手（4–6小时，下午出发）。
-
-**重要**：用户消息前会附带已由规则引擎+Mock工具生成的【结构化方案 planContext】。你必须：
-1. **不得编造** planContext 之外的 POI/店名；
-2. 用杂志风 Markdown 润色该方案，突出「玩→吃→加项」与订座/排队状态；
-3. 结尾用一句话复述 notify 文案风格（搞定了，X点出发…）。
-
-**输出结构**（不要代码块包裹）：
-
-# 周末半日 · {主题一句话}
-
-{2句导语：场景+取舍}
-
-### 下午｜{玩·小标题}
-{自然段，**加粗**时间与店名}
-
-### 傍晚｜{吃·小标题}
-{餐厅、订座/排队、饮食诉求如减脂}
-
-### 收尾｜{加项小标题}
-{Citywalk/展览等}
-
-### 一键安排
-- 订座/排队：{来自 planContext}
-- 发给同行：{notify 摘要}
-
-非规划类闲聊可简短回答，不必套模板。`;
 
 function parseJsonBlock(text: string): Record<string, unknown> | null {
   const trimmed = text.trim();
@@ -114,6 +75,62 @@ function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
+async function localSemanticExtract(
+  appId: string,
+  model: string,
+  body: Record<string, unknown>,
+  traceId: string,
+): Promise<{ ok: true; semantics: Record<string, unknown> } | { ok: false; error: string; status: number }> {
+  const userText = String(body.userText ?? "");
+  const location = (body.location as Record<string, unknown>) || {};
+  const ruleHints = body.ruleHints;
+  const userPayload = [
+    `【用户】${userText}`,
+    `【出发点】${location.label || ""} ${location.address || ""}`,
+    ruleHints ? `【规则预解析】${JSON.stringify(ruleHints)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const fr = await fridayChat(
+    appId,
+    model,
+    {
+      messages: [
+        { role: "system", content: RECOMMEND_SYSTEM },
+        {
+          role: "user",
+          content: `${userPayload}\n\n请输出合法 json 对象，包含上述语义字段。`,
+        },
+      ],
+      temperature: 0.1,
+      stream: false,
+      max_tokens: 1024,
+      response_format: { type: "json_object" },
+    },
+    traceId,
+  );
+
+  if (!fr.ok) {
+    const t = await fr.text();
+    return {
+      ok: false,
+      error: fridayErrorMessage(fr.status, t),
+      status: fr.status === 450 || fr.status === 451 ? 422 : 502,
+    };
+  }
+
+  const data = (await fr.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const content = data.choices?.[0]?.message?.content;
+  const parsed = content ? parseJsonBlock(content) : null;
+  if (!parsed) {
+    return { ok: false, error: "Invalid AI JSON", status: 422 };
+  }
+  return { ok: true, semantics: parsed };
+}
+
 function createLocalFridayMiddleware(
   appId: string,
   model: string,
@@ -123,7 +140,11 @@ function createLocalFridayMiddleware(
     const url = new URL(req.url, "http://localhost");
     const path = url.pathname;
 
-    if (path !== "/functions/v1/recommend" && path !== "/functions/v1/chat") {
+    if (
+      path !== "/functions/v1/recommend" &&
+      path !== "/functions/v1/chat" &&
+      path !== "/functions/v1/plan"
+    ) {
       return next();
     }
 
@@ -139,65 +160,82 @@ function createLocalFridayMiddleware(
       }
 
       if (path === "/functions/v1/recommend") {
-        const userText = String(body.userText ?? "");
-        const location = (body.location as Record<string, unknown>) || {};
-        const ruleHints = body.ruleHints;
-        const userPayload = [
-          `【用户】${userText}`,
-          `【出发点】${location.label || ""} ${location.address || ""}`,
-          ruleHints ? `【规则预解析】${JSON.stringify(ruleHints)}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
-        const fr = await fridayChat(
-          appId,
-          model,
-          {
-            messages: [
-              { role: "system", content: RECOMMEND_SYSTEM },
-              {
-                role: "user",
-                content: `${userPayload}\n\n请输出合法 json 对象，包含上述语义字段。`,
-              },
-            ],
-            temperature: 0.1,
-            stream: false,
-            max_tokens: 1024,
-            response_format: { type: "json_object" },
-          },
-          traceId,
-        );
-
-        if (!fr.ok) {
-          const t = await fr.text();
-          sendJson(res, fr.status === 450 || fr.status === 451 ? 422 : 502, {
-            ok: false,
-            error: fridayErrorMessage(fr.status, t),
-          });
+        const result = await localSemanticExtract(appId, model, body, traceId);
+        if (!result.ok) {
+          sendJson(res, result.status, { ok: false, error: result.error });
           return;
         }
-
-        const data = (await fr.json()) as {
-          choices?: { message?: { content?: string } }[];
-        };
-        const content = data.choices?.[0]?.message?.content;
-        const parsed = content ? parseJsonBlock(content) : null;
-        if (!parsed) {
-          sendJson(res, 422, { ok: false, error: "Invalid AI JSON" });
-          return;
-        }
-        sendJson(res, 200, { ok: true, semantics: parsed });
+        sendJson(res, 200, { ok: true, semantics: result.semantics });
         return;
       }
 
-      // chat — 流式转发
+      if (path === "/functions/v1/plan") {
+        const userText = String(body.userText ?? "");
+        const location = (body.location as Record<string, unknown>) || {};
+        const ruleHints = extractConstraints(userText);
+
+        try {
+          const plan = await buildWeekendPlanCore(
+            userText,
+            {
+              fullAddress: String(location.address ?? location.fullAddress ?? ""),
+              displayName: String(location.label ?? location.displayName ?? ""),
+              coords: location.coords as { lat: number; lng: number } | undefined,
+            },
+            async (text, loc) => {
+              const result = await localSemanticExtract(
+                appId,
+                model,
+                {
+                  userText: text,
+                  location: loc,
+                  ruleHints: {
+                    scenario: ruleHints.scenario,
+                    childAge: ruleHints.childAge,
+                    partyTotal: ruleHints.partyTotal,
+                    maxDistanceKm: ruleHints.maxDistanceKm,
+                    lowCalPreferred: ruleHints.lowCalPreferred,
+                    locationBlocks: ruleHints.locationBlocks,
+                    durationHours: ruleHints.durationHours,
+                  },
+                },
+                traceId,
+              );
+              if (!result.ok) throw new Error(result.error);
+              const semantic = parseAiSemantic(result.semantics);
+              if (!semantic) throw new Error("AI 语义 JSON 无效，请重试。");
+              return {
+                semantic,
+                trace: {
+                  tool: "ai_semantic_extract",
+                  input: { userText: text, location: loc, ruleHints },
+                  output: { semantic },
+                },
+              };
+            },
+          );
+          sendJson(res, 200, { ok: true, plan });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Unknown";
+          sendJson(res, /语义|Friday|AI|JSON|审核/.test(msg) ? 422 : 500, {
+            ok: false,
+            error: msg,
+          });
+        }
+        return;
+      }
+
+      // chat — 流式转发（注入 planContext，与 Edge 一致）
       const messages = (body.messages as { role: string; content: string }[]) || [];
+      const planContext = body.planContext as string | undefined;
+      const location = body.location as { label?: string; address?: string } | undefined;
+      const augmented = augmentChatMessages(messages, planContext, location);
+
       const fr = await fridayChat(
         appId,
         model,
         {
-          messages: [{ role: "system", content: CHAT_SYSTEM }, ...messages],
+          messages: [{ role: "system", content: CHAT_SYSTEM }, ...augmented],
           stream: true,
           max_tokens: 4096,
           temperature: 0.7,
@@ -243,13 +281,13 @@ export function localFridayEdgePlugin(mode: string): Plugin {
       const appId = env.FRIDAY_APP_ID?.trim();
       if (!appId) {
         console.warn(
-          "[local-friday-edge] 未配置 FRIDAY_APP_ID，/functions/v1/recommend 将走远程 Supabase（需已 deploy）",
+          "[local-friday-edge] 未配置 FRIDAY_APP_ID，Edge 接口将走远程 Supabase（需已 deploy plan/recommend/chat）",
         );
         return;
       }
       const model = env.FRIDAY_MODEL?.trim() || "gpt-4o-mini";
       console.log(
-        `[local-friday-edge] 本地代理 recommend/chat → Friday（${model}），无需 supabase login`,
+        `[local-friday-edge] 本地代理 plan/recommend/chat → Friday（${model}），无需 supabase login`,
       );
       server.middlewares.use(createLocalFridayMiddleware(appId, model));
     },

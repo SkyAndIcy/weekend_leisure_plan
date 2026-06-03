@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { MapPin, Utensils, Hotel, CheckCircle2, Clock, AlertCircle, ChevronDown, Plus, Map as MapIcon, List, Trash2, RefreshCw, X, Heart, ShoppingCart, CircleDot } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MapPin, Utensils, Hotel, CheckCircle2, Clock, AlertCircle, ChevronDown, Plus, Map as MapIcon, List, Trash2, RefreshCw, X, Heart, ShoppingCart, CircleDot, Bookmark } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCollections, type FavoriteTrip } from "@/contexts/collections-context";
 
 type Status = "unbooked" | "pending" | "completed" | "expired";
 type ViewMode = "timeline" | "map";
@@ -23,14 +24,7 @@ interface DayPlan {
   items: ItineraryItem[];
 }
 
-interface Trip {
-  id: string;
-  title: string;
-  dates: string;
-  days: DayPlan[];
-  active: boolean;
-  favorited: boolean;
-}
+type Trip = FavoriteTrip;
 
 const mockTrips: Trip[] = [
   {
@@ -53,25 +47,6 @@ const mockTrips: Trip[] = [
   },
 ];
 
-const mockFavorites: Trip[] = [
-  {
-    id: "f1",
-    title: "上周末亲子游方案",
-    dates: "周六下午，共3小时",
-    active: false,
-    favorited: true,
-    days: [],
-  },
-  {
-    id: "f2",
-    title: "朋友聚会包吹方案",
-    dates: "周日下午，共4人",
-    active: false,
-    favorited: true,
-    days: [],
-  },
-];
-
 const statusConfig = {
   unbooked: { icon: CircleDot, label: "未预定", className: "bg-primary/10 text-primary" },
   pending: { icon: Clock, label: "待核销", className: "bg-muted text-muted-foreground" },
@@ -84,15 +59,35 @@ const typeIcon = { scenic: MapPin, food: Utensils, hotel: Hotel };
 const _typeColor = { scenic: "border-l-meituan-blue", food: "border-l-meituan-orange", hotel: "border-l-purple-500" };
 void _typeColor;
 
-const ItineraryTab = () => {
+interface ItineraryTabProps {
+  openFavoritesRequest?: boolean;
+  onFavoritesRequestHandled?: () => void;
+}
+
+const ItineraryTab = ({
+  openFavoritesRequest = false,
+  onFavoritesRequestHandled,
+}: ItineraryTabProps) => {
+  const {
+    favoriteTrips,
+    savedGuides,
+    totalFavoriteCount,
+    removeFavoriteTrip,
+    removeSavedGuide,
+  } = useCollections();
   const [viewMode, setViewMode] = useState<ViewMode>("timeline");
   const [expandedDay, setExpandedDay] = useState<number | null>(1);
   const [selectedItem, setSelectedItem] = useState<ItineraryItem | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [trips, setTrips] = useState(mockTrips);
-  const [favorites] = useState(mockFavorites);
-  
+
+  useEffect(() => {
+    if (openFavoritesRequest) {
+      setShowFavorites(true);
+      onFavoritesRequestHandled?.();
+    }
+  }, [openFavoritesRequest, onFavoritesRequestHandled]);
 
   // New trip form
   const [newTitle, setNewTitle] = useState("");
@@ -158,6 +153,24 @@ const ItineraryTab = () => {
 
   const unbookedCount = activeTrip?.days.reduce((sum, d) => sum + d.items.filter((i) => i.status === "unbooked").length, 0) || 0;
 
+  const handleViewFavorite = (trip: Trip) => {
+    setTrips((prev) => {
+      const deactivated = prev.map((t) => ({ ...t, active: false }));
+      const exists = deactivated.some((t) => t.id === trip.id);
+      if (exists) {
+        return deactivated.map((t) => ({ ...t, active: t.id === trip.id }));
+      }
+      return [...deactivated, { ...trip, active: true }];
+    });
+    setExpandedDay(1);
+    setViewMode("timeline");
+    setShowFavorites(false);
+  };
+
+  const handleUnfavorite = (tripId: string) => {
+    removeFavoriteTrip(tripId);
+  };
+
   const handleBookAll = () => {
     setTrips((prev) =>
       prev.map((t) =>
@@ -199,10 +212,10 @@ const ItineraryTab = () => {
               style={{ boxShadow: "var(--shadow-card)" }}
             >
               <Heart className="w-4 h-4" />
-              {favorites.length > 0 && (
+              {totalFavoriteCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
                   style={{ background: "hsl(var(--meituan-red))" }}>
-                  {favorites.length}
+                  {totalFavoriteCount > 99 ? "99+" : totalFavoriteCount}
                 </span>
               )}
             </button>
@@ -507,7 +520,7 @@ const ItineraryTab = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center"
+            className="fixed inset-0 z-[60] flex items-end justify-center"
             style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
             onClick={() => setShowFavorites(false)}
           >
@@ -517,7 +530,7 @@ const ItineraryTab = () => {
               exit={{ y: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-t-3xl w-full max-w-[430px] max-h-[70vh] overflow-y-auto"
+              className="bg-card rounded-t-3xl w-full max-w-[430px] max-h-[70vh] overflow-y-auto pb-24"
               style={{ boxShadow: "var(--shadow-modal)" }}
             >
               <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
@@ -530,24 +543,62 @@ const ItineraryTab = () => {
                 </button>
               </div>
               <div className="p-4 space-y-3">
-                {favorites.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">暂无收藏的行程</p>
+                {totalFavoriteCount === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">暂无收藏，可在「探索」中收藏攻略</p>
                 ) : (
-                  favorites.map((trip) => (
-                    <div key={trip.id} className="p-4 rounded-2xl bg-muted/50 border border-border/50">
-                      <h4 className="font-semibold text-sm">{trip.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">{trip.dates}</p>
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          className="flex-1 py-2 rounded-xl text-xs font-bold text-amber-900 transition-all"
-                          style={{ background: "linear-gradient(135deg, hsl(43 100% 50%), hsl(33 95% 52%))" }}
-                        >
-                          查看详情
-                        </button>
-                        <button className="px-3 py-2 bg-muted text-foreground rounded-xl text-xs font-semibold hover:bg-secondary transition-colors">取消收藏</button>
+                  <>
+                    {favoriteTrips.length > 0 && (
+                      <p className="text-xs font-semibold text-muted-foreground px-1">行程方案</p>
+                    )}
+                    {favoriteTrips.map((trip) => (
+                      <div key={trip.id} className="p-4 rounded-2xl bg-muted/50 border border-border/50">
+                        <h4 className="font-semibold text-sm">{trip.title}</h4>
+                        <p className="text-xs text-muted-foreground mt-1">{trip.dates}</p>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            type="button"
+                            onClick={() => handleViewFavorite(trip)}
+                            className="flex-1 py-2 rounded-xl text-xs font-bold text-amber-900 transition-all active:scale-[0.98]"
+                            style={{ background: "linear-gradient(135deg, hsl(43 100% 50%), hsl(33 95% 52%))" }}
+                          >
+                            查看详情
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUnfavorite(trip.id)}
+                            className="px-3 py-2 bg-muted text-foreground rounded-xl text-xs font-semibold hover:bg-secondary transition-colors active:scale-[0.98]"
+                          >
+                            取消收藏
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    {savedGuides.length > 0 && (
+                      <p className="text-xs font-semibold text-muted-foreground px-1 pt-2">探索攻略</p>
+                    )}
+                    {savedGuides.map((guide) => (
+                      <div key={guide.id} className="p-4 rounded-2xl bg-muted/50 border border-border/50 flex gap-3">
+                        <img src={guide.image} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm line-clamp-2">{guide.title}</h4>
+                          <p className="text-xs text-muted-foreground mt-1">{guide.author}</p>
+                          <div className="flex gap-2 mt-3">
+                            <span className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium text-muted-foreground bg-card border border-border/50">
+                              <Bookmark className="w-3 h-3 fill-primary text-primary" />
+                              来自探索
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeSavedGuide(guide.id)}
+                              className="px-3 py-2 bg-muted text-foreground rounded-xl text-xs font-semibold hover:bg-secondary transition-colors active:scale-[0.98]"
+                            >
+                              取消收藏
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </motion.div>

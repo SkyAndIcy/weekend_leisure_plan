@@ -4,6 +4,7 @@ import {
   resolveAnchorFromText,
   shortAreaLabel,
 } from "@/lib/recommendation/geo";
+import { resolveZoneFromText } from "../../shared/planning/beijing-zones";
 
 export interface SavedAddress {
   id: string;
@@ -187,6 +188,15 @@ export function resolveManualInput(text: string): {
       name: shortAreaLabel(anchor),
       detail: anchor.label,
       coords: { lat: anchor.lat, lng: anchor.lng },
+    };
+  }
+
+  const zone = resolveZoneFromText(t);
+  if (zone) {
+    return {
+      name: zone.area,
+      detail: `北京市${zone.district}${zone.area}`,
+      coords: { lat: zone.lat, lng: zone.lng },
     };
   }
 

@@ -5,12 +5,15 @@ import AskXiaoTuan from "@/components/AskXiaoTuan";
 import GuidesTab from "@/components/GuidesTab";
 import ItineraryTab from "@/components/ItineraryTab";
 import ProfileTab from "@/components/ProfileTab";
+import { CollectionsProvider } from "@/contexts/collections-context";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabId>("ask");
   const [showSidebar, setShowSidebar] = useState(false);
+  const [openItineraryFavorites, setOpenItineraryFavorites] = useState(false);
 
   return (
+    <CollectionsProvider>
     <div className="min-h-screen bg-background flex justify-center overflow-hidden">
       <div className="w-full max-w-[430px] min-h-screen bg-background relative shadow-xl">
         <main className="pb-28 overflow-y-auto scrollbar-hide" style={{ height: "100vh" }}>
@@ -22,15 +25,25 @@ const Index = () => {
             <GuidesTab />
           </div>
           <div className={activeTab === "itinerary" ? "h-full" : "hidden"} aria-hidden={activeTab !== "itinerary"}>
-            <ItineraryTab />
+            <ItineraryTab
+              openFavoritesRequest={openItineraryFavorites}
+              onFavoritesRequestHandled={() => setOpenItineraryFavorites(false)}
+            />
           </div>
           <div className={activeTab === "profile" ? "h-full" : "hidden"} aria-hidden={activeTab !== "profile"}>
-            <ProfileTab />
+            <ProfileTab
+              onTabChange={setActiveTab}
+              onOpenItineraryFavorites={() => {
+                setActiveTab("itinerary");
+                setOpenItineraryFavorites(true);
+              }}
+            />
           </div>
         </main>
         <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
     </div>
+    </CollectionsProvider>
   );
 };
 

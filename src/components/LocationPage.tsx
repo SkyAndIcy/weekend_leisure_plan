@@ -6,24 +6,22 @@ import {
   saveAddresses,
   type SavedAddress,
 } from "@/hooks/use-location";
+import { resolveZoneFromText, zonesAsPickList } from "../../shared/planning/beijing-zones";
 
 interface NearbyPlace {
   id: string;
   name: string;
   detail: string;
-  distance: string;
+  distance?: string;
   lat: number;
   lng: number;
 }
 
-/** 模拟附近地点（真实场景接入 LBS API） */
-const MOCK_NEARBY: NearbyPlace[] = [
-  { id: "nb1", name: "三里屯太古里", detail: "北京市朝阳区三里屯路19号", distance: "180m", lat: 39.9345, lng: 116.4543 },
-  { id: "nb2", name: "工人体育场", detail: "北京市朝阳区工体东路4号", distance: "560m", lat: 39.93, lng: 116.45 },
-  { id: "nb3", name: "798艺术区", detail: "北京市朝阳区酒仙桥路4号", distance: "1.1km", lat: 39.9842, lng: 116.4954 },
-  { id: "nb4", name: "望京SOHO", detail: "北京市朝阳区望京街15号", distance: "1.8km", lat: 39.988, lng: 116.492 },
-  { id: "nb5", name: "奥森公园", detail: "北京市朝阳区奥林匹克森林公园", distance: "2.4km", lat: 40.0178, lng: 116.3972 },
-];
+/** 北京全城可选出发点（Mock；生产接 LBS） */
+const BEIJING_PICK_LIST: NearbyPlace[] = zonesAsPickList().map((z) => ({
+  ...z,
+  distance: undefined,
+}));
 
 interface LocationPageProps {
   currentAddress: string;
@@ -47,10 +45,10 @@ const LocationPage = ({ currentAddress, onBack, onSelect, onRelocate }: Location
   const [showMore, setShowMore] = useState(false);
 
   const filteredNearby = useMemo(() => {
-    if (!searchQuery.trim()) return MOCK_NEARBY;
-    const q = searchQuery.toLowerCase();
-    return MOCK_NEARBY.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.detail.toLowerCase().includes(q)
+    if (!searchQuery.trim()) return BEIJING_PICK_LIST.slice(0, 12);
+    const q = searchQuery.trim().toLowerCase();
+    return BEIJING_PICK_LIST.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.detail.toLowerCase().includes(q),
     );
   }, [searchQuery]);
 
@@ -66,12 +64,16 @@ const LocationPage = ({ currentAddress, onBack, onSelect, onRelocate }: Location
 
   const handleAddAddress = () => {
     if (!newName.trim()) return;
+    const blob = `${newName}${newDetail}`;
+    const zone = resolveZoneFromText(blob);
     const newAddr: SavedAddress = {
       id: Date.now().toString(),
       label: newTag,
       name: newName.trim(),
       detail: newDetail.trim() || newName.trim(),
       tag: newTag as SavedAddress["tag"],
+      lat: zone?.lat,
+      lng: zone?.lng,
     };
     const updated = [...savedAddresses, newAddr];
     setSavedAddresses(updated);

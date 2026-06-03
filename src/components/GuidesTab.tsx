@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Heart, MessageCircle, Bookmark, Search, Sparkles, TrendingUp, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCollections } from "@/contexts/collections-context";
 import hangzhouImg from "@/assets/travel-hangzhou.jpg";
 import dimsumImg from "@/assets/food-dimsum.jpg";
 import hotelImg from "@/assets/hotel-room.jpg";
@@ -32,10 +33,16 @@ const mockGuides: GuideCard[] = [
 const filters = ["全部", "亲子", "美食", "户外", "休闲", "购物", "文化", "夜生活"];
 
 const GuidesTab = () => {
+  const { isGuideSaved, toggleGuideSave } = useCollections();
   const [guides, setGuides] = useState(mockGuides);
   const [activeFilter, setActiveFilter] = useState("全部");
   const [selectedGuide, setSelectedGuide] = useState<GuideCard | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const withSaved = useCallback(
+    (g: GuideCard): GuideCard => ({ ...g, saved: isGuideSaved(g.id) }),
+    [isGuideSaved],
+  );
 
   const filteredGuides = useMemo(() => {
     let result = guides;
@@ -52,13 +59,34 @@ const GuidesTab = () => {
   const toggleLike = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setGuides((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, liked: !g.liked, likes: g.liked ? g.likes - 1 : g.likes + 1 } : g))
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        const liked = !g.liked;
+        return { ...g, liked, likes: liked ? g.likes + 1 : g.likes - 1 };
+      }),
     );
+    setSelectedGuide((prev) => {
+      if (!prev || prev.id !== id) return prev;
+      const liked = !prev.liked;
+      return { ...prev, liked, likes: liked ? prev.likes + 1 : prev.likes - 1 };
+    });
   };
 
-  const toggleSave = (id: string, e: React.MouseEvent) => {
+  const toggleSave = (guide: GuideCard, e: React.MouseEvent) => {
     e.stopPropagation();
-    setGuides((prev) => prev.map((g) => (g.id === id ? { ...g, saved: !g.saved } : g)));
+    const nowSaved = toggleGuideSave({
+      id: guide.id,
+      title: guide.title,
+      author: guide.author,
+      image: guide.image,
+      tags: guide.tags,
+    });
+    setGuides((prev) =>
+      prev.map((g) => (g.id === guide.id ? { ...g, saved: nowSaved } : g)),
+    );
+    setSelectedGuide((prev) =>
+      prev && prev.id === guide.id ? { ...prev, saved: nowSaved } : prev,
+    );
   };
 
   return (
@@ -137,21 +165,23 @@ const GuidesTab = () => {
           </div>
         )}
         <div className="columns-2 gap-3">
-          {filteredGuides.map((guide, idx) => (
+          {filteredGuides.map((guide, idx) => {
+            const g = withSaved(guide);
+            return (
             <motion.div
-              key={guide.id}
+              key={g.id}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.04, type: "spring", stiffness: 300, damping: 26 }}
               className="break-inside-avoid mb-3 bg-card rounded-2xl overflow-hidden cursor-pointer group border border-border/60"
               style={{ boxShadow: "var(--shadow-card)" }}
-              onClick={() => setSelectedGuide(guide)}
+              onClick={() => setSelectedGuide(g)}
             >
               {/* Image */}
               <div className="relative overflow-hidden">
                 <img
-                  src={guide.image}
-                  alt={guide.title}
+                  src={g.image}
+                  alt={g.title}
                   className="w-full aspect-[3/4] object-cover group-hover:scale-103 transition-transform duration-500"
                   loading="lazy"
                   style={{ "--tw-scale-x": 1.03, "--tw-scale-y": 1.03 } as React.CSSProperties}
@@ -160,50 +190,55 @@ const GuidesTab = () => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                 {/* Save button */}
                 <button
-                  onClick={(e) => toggleSave(guide.id, e)}
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                  type="button"
+                  onClick={(e) => toggleSave(g, e)}
+                  className="absolute top-2 right-2 z-10 w-7 h-7 rounded-full flex items-center justify-center transition-all active:scale-95"
                   style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(8px)" }}
+                  aria-label={g.saved ? "取消收藏" : "收藏"}
                 >
-                  <Bookmark className={`w-3.5 h-3.5 transition-colors ${guide.saved ? "fill-primary text-primary" : "text-foreground/70"}`} />
+                  <Bookmark className={`w-3.5 h-3.5 transition-colors ${g.saved ? "fill-primary text-primary" : "text-foreground/70"}`} />
                 </button>
                 {/* Top tag */}
-                {guide.tags[0] && (
+                {g.tags[0] && (
                   <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full"
                     style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(8px)", color: "hsl(220 15% 20%)" }}>
-                    #{guide.tags[0]}
+                    #{g.tags[0]}
                   </span>
                 )}
               </div>
 
               {/* Content */}
               <div className="p-2.5">
-                <h3 className="font-semibold text-[12.5px] leading-snug line-clamp-2 mb-2 text-foreground">{guide.title}</h3>
+                <h3 className="font-semibold text-[12.5px] leading-snug line-clamp-2 mb-2 text-foreground">{g.title}</h3>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm leading-none">{guide.avatar}</span>
-                    <span className="text-[11px] text-muted-foreground font-medium truncate max-w-[60px]">{guide.author}</span>
+                    <span className="text-sm leading-none">{g.avatar}</span>
+                    <span className="text-[11px] text-muted-foreground font-medium truncate max-w-[60px]">{g.author}</span>
                   </div>
-                  <button onClick={(e) => toggleLike(guide.id, e)} className="flex items-center gap-1 group/like">
-                    <Heart className={`w-3.5 h-3.5 transition-all ${guide.liked ? "fill-red-500 text-red-500 scale-110" : "text-muted-foreground group-hover/like:text-red-400"}`} />
+                  <button onClick={(e) => toggleLike(g.id, e)} className="flex items-center gap-1 group/like">
+                    <Heart className={`w-3.5 h-3.5 transition-all ${g.liked ? "fill-red-500 text-red-500 scale-110" : "text-muted-foreground group-hover/like:text-red-400"}`} />
                     <span className="text-[11px] text-muted-foreground">
-                      {guide.likes >= 1000 ? `${(guide.likes / 1000).toFixed(1)}k` : guide.likes}
+                      {g.likes >= 1000 ? `${(g.likes / 1000).toFixed(1)}k` : g.likes}
                     </span>
                   </button>
                 </div>
               </div>
             </motion.div>
-          ))}
+          );
+          })}
         </div>
       </div>
 
       {/* ── Guide Detail Sheet ── */}
       <AnimatePresence>
-        {selectedGuide && (
+        {selectedGuide && (() => {
+          const detail = withSaved(selectedGuide);
+          return (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center"
             style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)" }}
             onClick={() => setSelectedGuide(null)}
           >
@@ -213,7 +248,7 @@ const GuidesTab = () => {
               exit={{ y: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto"
+              className="bg-card rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto pb-24"
               style={{ boxShadow: "var(--shadow-modal)" }}
             >
               {/* Drag handle */}
@@ -222,20 +257,20 @@ const GuidesTab = () => {
               </div>
 
               <img
-                src={selectedGuide.image}
-                alt={selectedGuide.title}
+                src={detail.image}
+                alt={detail.title}
                 className="w-full aspect-video object-cover"
               />
 
               <div className="p-5">
-                <h2 className="text-lg font-bold mb-3 leading-snug">{selectedGuide.title}</h2>
+                <h2 className="text-lg font-bold mb-3 leading-snug">{detail.title}</h2>
 
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="w-9 h-9 rounded-2xl bg-muted flex items-center justify-center text-xl">
-                    {selectedGuide.avatar}
+                    {detail.avatar}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">{selectedGuide.author}</p>
+                    <p className="text-sm font-semibold">{detail.author}</p>
                     <p className="text-xs text-muted-foreground">旅行博主</p>
                   </div>
                   <button className="ml-auto px-3.5 py-1.5 rounded-full border border-border text-xs font-semibold hover:bg-muted transition-colors">
@@ -271,34 +306,40 @@ const GuidesTab = () => {
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-4 border-t border-border/60 pt-4">
+                {/* Actions — 底部需高于 Tab 栏，避免点击被挡住 */}
+                <div className="flex items-center gap-4 border-t border-border/60 pt-4 pb-2">
                   <button
-                    onClick={(e) => { toggleLike(selectedGuide.id, e); }}
-                    className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+                    type="button"
+                    onClick={(e) => toggleLike(detail.id, e)}
+                    className="flex items-center gap-1.5 text-sm font-medium transition-colors active:opacity-70"
                   >
-                    <Heart className={`w-5 h-5 ${selectedGuide.liked ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
-                    <span className={selectedGuide.liked ? "text-red-500" : "text-muted-foreground"}>
-                      {selectedGuide.likes >= 1000 ? `${(selectedGuide.likes / 1000).toFixed(1)}k` : selectedGuide.likes}
+                    <Heart className={`w-5 h-5 ${detail.liked ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
+                    <span className={detail.liked ? "text-red-500" : "text-muted-foreground"}>
+                      {detail.likes >= 1000 ? `${(detail.likes / 1000).toFixed(1)}k` : detail.likes}
                     </span>
                   </button>
-                  <button className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-                    <MessageCircle className="w-5 h-5" /> {selectedGuide.comments}
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground active:opacity-70"
+                  >
+                    <MessageCircle className="w-5 h-5" /> {detail.comments}
                   </button>
                   <button
-                    onClick={(e) => { toggleSave(selectedGuide.id, e); }}
-                    className="flex items-center gap-1.5 text-sm font-medium ml-auto"
+                    type="button"
+                    onClick={(e) => toggleSave(detail, e)}
+                    className="flex items-center gap-1.5 text-sm font-medium ml-auto active:opacity-70"
                   >
-                    <Bookmark className={`w-5 h-5 ${selectedGuide.saved ? "fill-primary text-primary" : "text-muted-foreground"}`} />
-                    <span className={selectedGuide.saved ? "text-primary" : "text-muted-foreground"}>
-                      {selectedGuide.saved ? "已收藏" : "收藏"}
+                    <Bookmark className={`w-5 h-5 ${detail.saved ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                    <span className={detail.saved ? "text-primary font-semibold" : "text-muted-foreground"}>
+                      {detail.saved ? "已收藏" : "收藏"}
                     </span>
                   </button>
                 </div>
               </div>
             </motion.div>
           </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
