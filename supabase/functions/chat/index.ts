@@ -5,7 +5,7 @@ import {
   getFridayConfig,
 } from "../_shared/friday_llm.ts";
 import { augmentChatMessages } from "../_shared/chat_augment.ts";
-import { CHAT_SYSTEM } from "../_shared/prompts.ts";
+import { CHAT_FOLLOWUP_SYSTEM, CHAT_SYSTEM } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +16,7 @@ const corsHeaders = {
 async function chatCompletions(
   messages: { role: string; content: string }[],
   stream: boolean,
+  systemPrompt: string,
   traceCtx?: { traceId?: string; sessionId?: string; queryId?: string },
 ): Promise<Response> {
   const friday = getFridayConfig();
@@ -23,7 +24,7 @@ async function chatCompletions(
     return fridayChatCompletions(
       friday,
       {
-        messages: [{ role: "system", content: CHAT_SYSTEM }, ...messages],
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
         stream,
         max_tokens: 4096,
         temperature: 0.7,
@@ -47,7 +48,7 @@ async function chatCompletions(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [{ role: "system", content: CHAT_SYSTEM }, ...messages],
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
       stream,
     }),
   });
@@ -57,12 +58,18 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, planContext, location, traceId, sessionId, queryId } =
+    const { messages, planContext, location, followUp, traceId, sessionId, queryId } =
       await req.json();
 
-    const augmented = augmentChatMessages(messages ?? [], planContext, location);
+    const augmented = augmentChatMessages(
+      messages ?? [],
+      planContext,
+      location,
+      !!followUp,
+    );
+    const systemPrompt = followUp ? CHAT_FOLLOWUP_SYSTEM : CHAT_SYSTEM;
 
-    const response = await chatCompletions(augmented, true, {
+    const response = await chatCompletions(augmented, true, systemPrompt, {
       traceId,
       sessionId,
       queryId,

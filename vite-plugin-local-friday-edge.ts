@@ -5,7 +5,7 @@
 import type { Plugin, ViteDevServer } from "vite";
 import { loadEnv } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
-import { RECOMMEND_SYSTEM, CHAT_SYSTEM } from "./supabase/functions/_shared/prompts";
+import { RECOMMEND_SYSTEM, CHAT_FOLLOWUP_SYSTEM, CHAT_SYSTEM } from "./supabase/functions/_shared/prompts";
 import { augmentChatMessages } from "./supabase/functions/_shared/chat_augment";
 import { buildWeekendPlanCore } from "./shared/planning/build-plan";
 import { parseAiSemantic } from "./shared/planning/semantic-merge";
@@ -229,13 +229,15 @@ function createLocalFridayMiddleware(
       const messages = (body.messages as { role: string; content: string }[]) || [];
       const planContext = body.planContext as string | undefined;
       const location = body.location as { label?: string; address?: string } | undefined;
-      const augmented = augmentChatMessages(messages, planContext, location);
+      const followUp = !!body.followUp;
+      const augmented = augmentChatMessages(messages, planContext, location, followUp);
+      const systemPrompt = followUp ? CHAT_FOLLOWUP_SYSTEM : CHAT_SYSTEM;
 
       const fr = await fridayChat(
         appId,
         model,
         {
-          messages: [{ role: "system", content: CHAT_SYSTEM }, ...augmented],
+          messages: [{ role: "system", content: systemPrompt }, ...augmented],
           stream: true,
           max_tokens: 4096,
           temperature: 0.7,

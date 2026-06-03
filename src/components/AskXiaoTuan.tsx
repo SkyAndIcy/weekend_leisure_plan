@@ -7,7 +7,7 @@ import mascotImg from "@/assets/cat-mascot.png";
 import QuickFillTemplate from "@/components/QuickFillTemplate";
 import ChatItineraryCard from "@/components/chat/ChatItineraryCard";
 import ChatRouteMap, { type MapPoint } from "@/components/chat/ChatRouteMap";
-import ArticleCard, { parseArticle } from "@/components/chat/ArticleCard";
+import ArticleCard from "@/components/chat/ArticleCard";
 import ContinueExplore from "@/components/chat/ContinueExplore";
 import LocationPage from "@/components/LocationPage";
 import LocationPermissionModal from "@/components/LocationPermissionModal";
@@ -20,6 +20,13 @@ import { AiSemanticError } from "@/lib/recommendation/ai-semantic";
 import { PlanningError } from "@/lib/recommendation/plan-api";
 import { buildWeekendPlan, planContextForLlm } from "@/lib/recommendation/planner";
 import { planToUi } from "@/lib/recommendation/plan-to-ui";
+import {
+  buildExploreSuggestions,
+  findLinkedPlanContext,
+  findPlanningUserHint,
+  isFollowUpQuery,
+  lastAssistantMessageIndex,
+} from "@/lib/explore-suggestions";
 import type { WeekendPlan } from "@/lib/recommendation/types";
 import type { DayPlan } from "@/types/itinerary";
 
@@ -33,6 +40,8 @@ interface Message {
   itinerary?: DayPlan[];
   routePoints?: MapPoint[];
   nearbyPoints?: MapPoint[];
+  /** 规则引擎方案上下文，供追问复用 */
+  planContext?: string;
 }
 
 
@@ -94,6 +103,66 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
     setIsTyping(true);
 
     const assistantId = (Date.now() + 1).toString();
+    const lastPlanMsg = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && m.planContext);
+
+    if (lastPlanMsg?.planContext && isFollowUpQuery(msg, true)) {
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantId, role: "assistant", content: "", streaming: true },
+      ]);
+      try {
+        const assistantContent = await streamChatCompletion(
+          {
+            ...fridayTracePayload(),
+            messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+            planContext: lastPlanMsg.planContext,
+            followUp: true,
+            location: {
+              label: location.displayName || location.fullAddress,
+              address: location.fullAddress,
+            },
+          },
+          (text) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, content: text, streaming: true } : m,
+              ),
+            );
+          },
+        );
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  streaming: false,
+                  content: assistantContent || "暂时无法回答，请稍后再试。",
+                  planContext: lastPlanMsg.planContext,
+                }
+              : m,
+          ),
+        );
+      } catch (e) {
+        console.error("Follow-up chat error:", e);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  streaming: false,
+                  content:
+                    "追问服务暂时不可用。半日出门一般不用订酒店；若想延长游玩，可在行程表里点「换一个」调整地点。",
+                }
+              : m,
+          ),
+        );
+      } finally {
+        setIsTyping(false);
+      }
+      return;
+    }
 
     let weekendPlan: WeekendPlan;
     let planUi: ReturnType<typeof planToUi>;
@@ -133,6 +202,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
         role: "assistant",
         content: "",
         streaming: true,
+        planContext,
         itinerary: planUi.days,
         routePoints: planUi.routePoints,
         nearbyPoints: planUi.nearbyPoints,
@@ -166,6 +236,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                 ...m,
                 streaming: false,
                 content: assistantContent || fallbackCopy,
+                planContext,
                 itinerary: planUi.days,
                 routePoints: planUi.routePoints,
                 nearbyPoints: planUi.nearbyPoints,
@@ -182,6 +253,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                 ...m,
                 streaming: false,
                 content: `${fallbackCopy}\n\n> 文案润色失败，已展示规则引擎行程。`,
+                planContext,
                 itinerary: planUi.days,
                 routePoints: planUi.routePoints,
                 nearbyPoints: planUi.nearbyPoints,
@@ -365,7 +437,19 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
 
         <div className="px-4 pt-3 pb-2">
           <AnimatePresence>
-            {messages.map((msg) => (
+            {messages.map((msg, msgIndex) => {
+              const lastAiIndex = lastAssistantMessageIndex(messages);
+              const linkedPlanContext = findLinkedPlanContext(messages, msgIndex);
+              const showContinueExplore =
+                msg.role === "assistant" &&
+                !msg.streaming &&
+                msgIndex === lastAiIndex &&
+                !!linkedPlanContext;
+              const planningUserHint = linkedPlanContext
+                ? findPlanningUserHint(messages, msgIndex)
+                : undefined;
+
+              return (
               <motion.div
                 key={msg.id}
                 initial={{ opacity: 0, y: 10 }}
@@ -430,19 +514,25 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                               onRemoveFromRoute={(pointId) => handleRemoveFromRoute(msg.id, pointId)}
                             />
                           )}
-                          {!msg.streaming && /^\s*#\s/.test(msg.content) && (
-                            <ContinueExplore
-                              suggestions={parseArticle(msg.content).suggestions}
-                              onSuggestionClick={(text) => handleSend(text)}
-                            />
-                          )}
                         </div>
+                      )}
+
+                      {showContinueExplore && linkedPlanContext && (
+                        <ContinueExplore
+                          suggestions={buildExploreSuggestions(
+                            linkedPlanContext,
+                            location.displayName || location.fullAddress,
+                            planningUserHint,
+                          )}
+                          onSuggestionClick={(text) => handleSend(text)}
+                        />
                       )}
                     </div>
                   </div>
                 )}
               </motion.div>
-            ))}
+            );
+            })}
           </AnimatePresence>
 
           {/* Typing indicator */}
