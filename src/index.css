@@ -1,0 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 46 60% 92%;
+    --foreground: 220 15% 12%;
+
+    --card: 46 65% 95%;
+    --card-foreground: 220 15% 12%;
+
+    --popover: 46 65% 95%;
+    --popover-foreground: 220 15% 12%;
+
+    --primary: 38 89% 86%;
+    --primary-foreground: 30 35% 18%;
+
+    --secondary: 44 38% 85%;
+    --secondary-foreground: 220 10% 25%;
+
+    --muted: 46 65% 95%;
+    --muted-foreground: 36 12% 42%;
+
+    --accent: 38 89% 92%;
+    --accent-foreground: 30 35% 18%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 44 32% 84%;
+    --input: 44 32% 84%;
+    --ring: 38 89% 86%;
+
+    --radius: 0.875rem;
+
+    --meituan-yellow: 38 89% 86%;
+    --meituan-yellow-hover: 38 70% 76%;
+    --meituan-yellow-light: 38 89% 94%;
+    --meituan-green: 152 60% 42%;
+    --meituan-green-foreground: 0 0% 100%;
+    --meituan-red: 4 80% 52%;
+    --meituan-orange: 26 95% 54%;
+    --meituan-blue: 213 94% 52%;
+
+    --shadow-card: 0 1px 8px -1px hsl(220 20% 0% / 0.06), 0 0 0 1px hsl(220 20% 0% / 0.03);
+    --shadow-card-hover: 0 6px 24px -4px hsl(220 20% 0% / 0.1), 0 0 0 1px hsl(220 20% 0% / 0.04);
+    --shadow-modal: 0 20px 60px -8px hsl(220 20% 0% / 0.18);
+    --shadow-nav: 0 -1px 0 hsl(220 20% 0% / 0.06), 0 -8px 24px -4px hsl(220 20% 0% / 0.05);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+}
+
+@layer utilities {
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--meituan-yellow)), hsl(var(--meituan-orange)));
+  }
+
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(43 100% 42%), hsl(26 95% 54%));
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Budget slider thumb */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: hsl(43 100% 50%);
+    border: 3px solid white;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.18);
+    cursor: pointer;
+    margin-top: -8px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: hsl(43 100% 50%);
+    border: 3px solid white;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.18);
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+  }
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: hsl(var(--muted));
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  .glass-dark {
+    background: rgba(20, 20, 25, 0.75);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  .card-elevated {
+    background: #fff;
+    box-shadow: var(--shadow-card);
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--secondary)) 50%, hsl(var(--muted)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ── animations ──────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes float-up {
+  0% { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.animate-float-up {
+  animation: float-up 0.35s ease-out forwards;
+}
+
+@keyframes breathe-glow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(43 100% 50% / 0); }
+  50% { box-shadow: 0 0 12px 2px hsl(43 100% 50% / 0.35); }
+}
+
+.animate-breathe-glow {
+  animation: breathe-glow 2.5s ease-in-out infinite;
+}
+
+/* ── page phone frame ─────────────────────────────────────── */
+.phone-frame {
+  box-shadow: 0 0 0 1px hsl(220 20% 88%), 0 24px 80px -12px hsl(220 30% 12% / 0.2);
+}
