@@ -117,18 +117,45 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
 
   const handleNewChat = () => {
     const stored = toStoredMessages(messages);
-    let next = chatSessions;
-    if (stored.length > 0) {
-      next = upsertSession(chatSessions, activeSessionId, stored);
+    if (stored.length === 0) {
+      setShowSidebar(false);
+      return;
     }
+    let next = upsertSession(chatSessions, activeSessionId, stored);
     const fresh = createEmptySession();
-    next = [fresh, ...next];
+    next = [fresh, ...next.filter((s) => s.id !== fresh.id)];
     saveChatSessions(next, fresh.id);
     setChatSessions(next);
     setActiveSessionId(fresh.id);
     setMessages([]);
     setInput("");
     setIsTyping(false);
+  };
+
+  const handleDeleteChat = (id: string) => {
+    const stored = toStoredMessages(messages);
+    let next = upsertSession(chatSessions, activeSessionId, stored).filter((s) => s.id !== id);
+
+    if (next.length === 0) {
+      const fresh = createEmptySession();
+      next = [fresh];
+      saveChatSessions(next, fresh.id);
+      setChatSessions(next);
+      setActiveSessionId(fresh.id);
+      setMessages([]);
+      setInput("");
+      return;
+    }
+
+    const newActiveId = id === activeSessionId ? next[0].id : activeSessionId;
+    saveChatSessions(next, newActiveId);
+    setChatSessions(next);
+    if (id === activeSessionId) {
+      const target = next.find((s) => s.id === newActiveId)!;
+      setActiveSessionId(newActiveId);
+      setMessages(target.messages);
+      setInput("");
+    }
   };
 
   const handleSelectChat = (id: string) => {
@@ -785,6 +812,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
         activeSessionId={activeSessionId}
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
+        onDeleteChat={handleDeleteChat}
         currentLocationName={location.displayName}
         onLocationClick={() => { setShowSidebar(false); setShowLocationPage(true); }}
       />

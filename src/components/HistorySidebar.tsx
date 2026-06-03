@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Settings, Plus, MessageSquarePlus, ChevronRight } from "lucide-react";
+import { Search, Settings, MessageSquarePlus, Trash2 } from "lucide-react";
 import { groupSessionsByTime, type ChatSession } from "@/lib/chat-sessions";
 
 interface HistorySidebarProps {
@@ -10,6 +10,7 @@ interface HistorySidebarProps {
   activeSessionId: string;
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
+  onDeleteChat: (id: string) => void;
   currentLocationName: string;
   onLocationClick: () => void;
 }
@@ -23,6 +24,7 @@ const HistorySidebar = ({
   activeSessionId,
   onNewChat,
   onSelectChat,
+  onDeleteChat,
 }: HistorySidebarProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -136,21 +138,31 @@ const HistorySidebar = ({
                   </div>
                   <div>
                     {group.items.map((item) => (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
-                        onClick={() => {
-                          onSelectChat(item.id);
-                          onClose();
-                        }}
-                        className={`w-full text-left px-4 mx-0 py-3 transition-colors ${
-                          item.id === activeSessionId
-                            ? "bg-muted/70 rounded-xl"
-                            : "hover:bg-muted/40"
+                        className={`flex items-center gap-0.5 mx-2 mb-0.5 rounded-xl transition-colors ${
+                          item.id === activeSessionId ? "bg-muted/70" : "hover:bg-muted/40"
                         }`}
                       >
-                        <p className="text-sm font-medium truncate pr-2">{item.title}</p>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectChat(item.id);
+                            onClose();
+                          }}
+                          className="flex-1 min-w-0 text-left px-3 py-3"
+                        >
+                          <p className="text-sm font-medium truncate">{item.title}</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteChat(item.id)}
+                          className="shrink-0 w-9 h-9 mr-1 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          aria-label={`删除对话：${item.title}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
