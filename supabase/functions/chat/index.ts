@@ -58,7 +58,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, planContext, location, followUp, traceId, sessionId, queryId } =
+    const { messages, planContext, location, followUp, followUpMemory, traceId, sessionId, queryId } =
       await req.json();
 
     const augmented = augmentChatMessages(
@@ -66,6 +66,7 @@ serve(async (req) => {
       planContext,
       location,
       !!followUp,
+      followUpMemory as string | undefined,
     );
     const systemPrompt = followUp ? CHAT_FOLLOWUP_SYSTEM : CHAT_SYSTEM;
 

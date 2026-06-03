@@ -230,7 +230,14 @@ function createLocalFridayMiddleware(
       const planContext = body.planContext as string | undefined;
       const location = body.location as { label?: string; address?: string } | undefined;
       const followUp = !!body.followUp;
-      const augmented = augmentChatMessages(messages, planContext, location, followUp);
+      const followUpMemory = body.followUpMemory as string | undefined;
+      const augmented = augmentChatMessages(
+        messages,
+        planContext,
+        location,
+        followUp,
+        followUpMemory,
+      );
       const systemPrompt = followUp ? CHAT_FOLLOWUP_SYSTEM : CHAT_SYSTEM;
 
       const fr = await fridayChat(

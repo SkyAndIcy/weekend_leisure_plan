@@ -155,6 +155,23 @@ export function buildBeijingPoiCatalog(): Poi[] {
       tablesLeft: (i % 5) + 1,
       queueMin: (i % 3) * 8,
     });
+    if (z.id === "wj") {
+      pois.push({
+        id: "a-wj-798",
+        name: "798艺术区",
+        category: "attraction",
+        lat: z.lat + 0.002,
+        lng: z.lng + 0.006,
+        district: z.district,
+        area: z.area,
+        tags: ["family_child", "photo", "art", "indoor_outdoor"],
+        avgPrice: 0,
+        durationMin: 90,
+        description: "艺术区涂鸦与户外装置，适合亲子拍照探索",
+        tablesLeft: -1,
+        queueMin: 0,
+      });
+    }
     if (i % 4 === 0) {
       pois.push({
         id: `e-${z.id}`,

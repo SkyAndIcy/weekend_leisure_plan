@@ -21,14 +21,39 @@ import { PlanningError } from "@/lib/recommendation/plan-api";
 import { buildWeekendPlan, planContextForLlm } from "@/lib/recommendation/planner";
 import { planToUi } from "@/lib/recommendation/plan-to-ui";
 import {
-  buildExploreSuggestions,
+  buildExploreGuides,
   findLinkedPlanContext,
   findPlanningUserHint,
   isFollowUpQuery,
   lastAssistantMessageIndex,
 } from "@/lib/explore-suggestions";
+import { buildFollowUpMemoryBlock, findPlanAnchorIndex } from "@/lib/follow-up-context";
+import {
+  appendPoiToPlanContext,
+  buildItineraryEditReply,
+  extractPoiQuery,
+  findPoiInCatalog,
+  insertPoiIntoItinerary,
+  isItineraryEditRequest,
+} from "@/lib/itinerary-edit";
+import {
+  createEmptySession,
+  initChatSessionState,
+  saveChatSessions,
+  upsertSession,
+  type ChatSession,
+  type StoredMessage,
+} from "@/lib/chat-sessions";
 import type { WeekendPlan } from "@/lib/recommendation/types";
 import type { DayPlan } from "@/types/itinerary";
+
+const initialSession = initChatSessionState();
+
+function toStoredMessages(messages: Message[]): StoredMessage[] {
+  return messages
+    .filter((m) => !m.streaming)
+    .map(({ streaming: _s, ...rest }) => rest);
+}
 
 type ChatViewMode = "list" | "map";
 
@@ -52,7 +77,9 @@ interface AskXiaoTuanProps {
 
 const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
   const setShowSidebar = onSidebarChange;
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(initialSession.sessions);
+  const [activeSessionId, setActiveSessionId] = useState(initialSession.activeId);
+  const [messages, setMessages] = useState<Message[]>(initialSession.messages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
@@ -75,6 +102,47 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const stored = toStoredMessages(messages);
+      setChatSessions((prev) => {
+        const next = upsertSession(prev, activeSessionId, stored);
+        saveChatSessions(next, activeSessionId);
+        return next;
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [messages, activeSessionId]);
+
+  const handleNewChat = () => {
+    const stored = toStoredMessages(messages);
+    let next = chatSessions;
+    if (stored.length > 0) {
+      next = upsertSession(chatSessions, activeSessionId, stored);
+    }
+    const fresh = createEmptySession();
+    next = [fresh, ...next];
+    saveChatSessions(next, fresh.id);
+    setChatSessions(next);
+    setActiveSessionId(fresh.id);
+    setMessages([]);
+    setInput("");
+    setIsTyping(false);
+  };
+
+  const handleSelectChat = (id: string) => {
+    if (id === activeSessionId) return;
+    const stored = toStoredMessages(messages);
+    let next = upsertSession(chatSessions, activeSessionId, stored);
+    const target = next.find((s) => s.id === id);
+    if (!target) return;
+    saveChatSessions(next, id);
+    setChatSessions(next);
+    setActiveSessionId(id);
+    setMessages(target.messages);
+    setIsTyping(false);
+  };
 
   const handleSend = async (text?: string) => {
     let msg = text || input.trim();
@@ -103,11 +171,56 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
     setIsTyping(true);
 
     const assistantId = (Date.now() + 1).toString();
-    const lastPlanMsg = [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant" && m.planContext);
+    const planAnchorIdx = findPlanAnchorIndex(messages);
+    const lastPlanMsg = planAnchorIdx >= 0 ? messages[planAnchorIdx] : undefined;
+
+    if (lastPlanMsg?.itinerary?.length && isItineraryEditRequest(msg, true)) {
+      const query = extractPoiQuery(msg) ?? msg;
+      const poi = findPoiInCatalog(query);
+      if (!poi) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant",
+            content: `没有在行程候选池里找到「${query}」。可以说具体商圈或从「继续探索」里的备选里选，我帮你写进行程表。`,
+          },
+        ]);
+        setIsTyping(false);
+        return;
+      }
+      const updatedDays = insertPoiIntoItinerary(lastPlanMsg.itinerary, poi);
+      const inserted = updatedDays[0]?.items.find((i) => i.name === poi.name);
+      const updatedCtx = appendPoiToPlanContext(
+        lastPlanMsg.planContext ?? "",
+        poi,
+        inserted?.time ?? "16:00",
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantId,
+          role: "assistant",
+          content: buildItineraryEditReply(poi, updatedDays),
+          itinerary: updatedDays,
+          routePoints: lastPlanMsg.routePoints,
+          nearbyPoints: lastPlanMsg.nearbyPoints,
+          planContext: updatedCtx,
+        },
+      ]);
+      setIsTyping(false);
+      return;
+    }
 
     if (lastPlanMsg?.planContext && isFollowUpQuery(msg, true)) {
+      const followUpMemory = buildFollowUpMemoryBlock({
+        planContext: lastPlanMsg.planContext,
+        itinerary: lastPlanMsg.itinerary,
+        messages: newMessages,
+        planMessageIndex: planAnchorIdx,
+        homeLabel: location.displayName || location.fullAddress,
+      });
+
       setMessages((prev) => [
         ...prev,
         { id: assistantId, role: "assistant", content: "", streaming: true },
@@ -119,6 +232,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
             planContext: lastPlanMsg.planContext,
             followUp: true,
+            followUpMemory,
             location: {
               label: location.displayName || location.fullAddress,
               address: location.fullAddress,
@@ -139,7 +253,6 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                   ...m,
                   streaming: false,
                   content: assistantContent || "暂时无法回答，请稍后再试。",
-                  planContext: lastPlanMsg.planContext,
                 }
               : m,
           ),
@@ -519,12 +632,12 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
 
                       {showContinueExplore && linkedPlanContext && (
                         <ContinueExplore
-                          suggestions={buildExploreSuggestions(
+                          guides={buildExploreGuides(
                             linkedPlanContext,
                             location.displayName || location.fullAddress,
                             planningUserHint,
                           )}
-                          onSuggestionClick={(text) => handleSend(text)}
+                          onGuideClick={(text) => handleSend(text)}
                         />
                       )}
                     </div>
@@ -668,10 +781,10 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
       <HistorySidebar
         open={showSidebar}
         onClose={() => setShowSidebar(false)}
-        onSelectChat={(id) => {
-          // TODO: load chat history by id
-          console.log("Select history:", id);
-        }}
+        sessions={chatSessions}
+        activeSessionId={activeSessionId}
+        onNewChat={handleNewChat}
+        onSelectChat={handleSelectChat}
         currentLocationName={location.displayName}
         onLocationClick={() => { setShowSidebar(false); setShowLocationPage(true); }}
       />
