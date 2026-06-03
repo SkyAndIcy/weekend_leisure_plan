@@ -26,7 +26,22 @@ interface DayPlan {
 
 type Trip = FavoriteTrip;
 
-const mockTrips: Trip[] = [
+const ITINERARY_TRIPS_STORAGE_KEY = "weekendmiao_itinerary_trips";
+
+function loadTripsFromStorage(): Trip[] {
+  try {
+    const raw = localStorage.getItem(ITINERARY_TRIPS_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw) as Trip[];
+      return Array.isArray(parsed) ? parsed : DEFAULT_TRIPS;
+    }
+    return DEFAULT_TRIPS;
+  } catch {
+    return DEFAULT_TRIPS;
+  }
+}
+
+const DEFAULT_TRIPS: Trip[] = [
   {
     id: "1",
     title: "周末下午亲子半日游",
@@ -80,7 +95,15 @@ const ItineraryTab = ({
   const [selectedItem, setSelectedItem] = useState<ItineraryItem | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAddTrip, setShowAddTrip] = useState(false);
-  const [trips, setTrips] = useState(mockTrips);
+  const [trips, setTrips] = useState(loadTripsFromStorage);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ITINERARY_TRIPS_STORAGE_KEY, JSON.stringify(trips));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [trips]);
 
   useEffect(() => {
     if (openFavoritesRequest) {

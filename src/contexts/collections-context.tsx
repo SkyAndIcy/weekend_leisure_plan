@@ -9,6 +9,7 @@ import {
 } from "react";
 
 const SAVED_GUIDES_STORAGE_KEY = "weekendmiao_saved_guides";
+const FAVORITE_TRIPS_STORAGE_KEY = "weekendmiao_favorite_trips";
 
 function loadSavedGuidesFromStorage(): SavedGuide[] {
   try {
@@ -18,6 +19,19 @@ function loadSavedGuidesFromStorage(): SavedGuide[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function loadFavoriteTripsFromStorage(): FavoriteTrip[] {
+  try {
+    const raw = localStorage.getItem(FAVORITE_TRIPS_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw) as FavoriteTrip[];
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    return INITIAL_FAVORITE_TRIPS;
+  } catch {
+    return INITIAL_FAVORITE_TRIPS;
   }
 }
 
@@ -139,8 +153,16 @@ type CollectionsContextValue = {
 const CollectionsContext = createContext<CollectionsContextValue | null>(null);
 
 export function CollectionsProvider({ children }: { children: ReactNode }) {
-  const [favoriteTrips, setFavoriteTrips] = useState(INITIAL_FAVORITE_TRIPS);
+  const [favoriteTrips, setFavoriteTrips] = useState<FavoriteTrip[]>(loadFavoriteTripsFromStorage);
   const [savedGuides, setSavedGuides] = useState<SavedGuide[]>(loadSavedGuidesFromStorage);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITE_TRIPS_STORAGE_KEY, JSON.stringify(favoriteTrips));
+    } catch {
+      /* ignore */
+    }
+  }, [favoriteTrips]);
 
   useEffect(() => {
     try {
