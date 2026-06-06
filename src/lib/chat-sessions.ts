@@ -1,4 +1,4 @@
-import type { MapPoint } from "@/components/chat/ChatRouteMap";
+import type { MapDeparturePoint, MapPoint } from "@/types/map";
 import type { DayPlan } from "@/types/itinerary";
 
 const SESSIONS_KEY = "weekendmiao_chat_sessions";
@@ -12,6 +12,7 @@ export type StoredMessage = {
   itinerary?: DayPlan[];
   routePoints?: MapPoint[];
   nearbyPoints?: MapPoint[];
+  departurePoint?: MapDeparturePoint;
 };
 
 export type ChatSession = {

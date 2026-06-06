@@ -1,4 +1,5 @@
-import type { MapPoint } from "@/components/chat/ChatRouteMap";
+import { buildDeparturePoint } from "@/lib/itinerary-route-sync";
+import type { MapDeparturePoint, MapPoint } from "@/types/map";
 import type { DayPlan } from "@/types/itinerary";
 import { latLngToPercent } from "./geo";
 import type { WeekendPlan } from "./types";
@@ -21,8 +22,10 @@ export function planToUi(plan: WeekendPlan): {
   days: DayPlan[];
   routePoints: MapPoint[];
   nearbyPoints: MapPoint[];
+  departurePoint: MapDeparturePoint;
 } {
   const home = { lat: plan.homeLat, lng: plan.homeLng, label: plan.homeLabel };
+  const departurePoint = buildDeparturePoint(home);
 
   const items = plan.timeline.map((slot) => ({
     id: slot.poi.id,
@@ -51,11 +54,13 @@ export function planToUi(plan: WeekendPlan): {
       type: phaseToType(slot.phase),
       x,
       y,
+      lat: slot.poi.lat,
+      lng: slot.poi.lng,
       inRoute: true,
       description: forDisplay(slot.notes),
       price: slot.poi.avgPrice > 0 ? `¥${slot.poi.avgPrice}` : "免费",
     };
   });
 
-  return { days, routePoints, nearbyPoints: [] };
+  return { days, routePoints, nearbyPoints: [], departurePoint };
 }

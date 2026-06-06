@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet 自定义标记：去掉默认白底方框 */
+.leaflet-custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 @layer base {
   :root {
     --background: 46 60% 92%;

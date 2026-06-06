@@ -19,7 +19,7 @@ const ContinueExplore = ({ guides, onGuideClick }: Props) => {
           <div>
             <p className="text-[12px] font-semibold text-foreground">接下来可以…</p>
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-              选好方向，小喵在当前方案上接着帮你聊
+              选好方向，小喵在当前方案上接着帮你规划
             </p>
           </div>
         </div>

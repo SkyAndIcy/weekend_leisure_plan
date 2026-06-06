@@ -1,4 +1,5 @@
 import type { Constraints, Poi, Scenario } from "../types";
+import type { MealKind, RoutePattern } from "../route-pattern.ts";
 
 /** 流水线各阶段审计日志 */
 export interface PipelineStageLog {
@@ -21,6 +22,8 @@ export interface EffectiveConstraints extends Constraints {
   /** 全程时间预算（分钟） */
   timeBudgetMin: { min: number; max: number };
   intentSummary: string;
+  routePattern: RoutePattern;
+  mealKind: MealKind;
 }
 
 /** 多维度打分明细 */

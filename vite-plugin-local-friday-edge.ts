@@ -134,6 +134,7 @@ async function localSemanticExtract(
 function createLocalFridayMiddleware(
   appId: string,
   model: string,
+  amapKey: string,
 ): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
   return (req, res, next) => {
     if (!req.url || req.method === "OPTIONS") return next();
@@ -143,12 +144,44 @@ function createLocalFridayMiddleware(
     if (
       path !== "/functions/v1/recommend" &&
       path !== "/functions/v1/chat" &&
-      path !== "/functions/v1/plan"
+      path !== "/functions/v1/plan" &&
+      path !== "/api/amap-route"
     ) {
       return next();
     }
 
     void (async () => {
+      if (path === "/api/amap-route") {
+        const origin = url.searchParams.get("origin");
+        const destination = url.searchParams.get("destination");
+        const waypoints = url.searchParams.get("waypoints");
+        if (!origin || !destination || !amapKey) {
+          sendJson(res, 400, { ok: false, error: "missing params or AMAP_KEY" });
+          return;
+        }
+        const amapUrl = new URL("https://restapi.amap.com/v3/direction/driving");
+        amapUrl.searchParams.set("key", amapKey);
+        amapUrl.searchParams.set("origin", origin);
+        amapUrl.searchParams.set("destination", destination);
+        if (waypoints) amapUrl.searchParams.set("waypoints", waypoints);
+        amapUrl.searchParams.set("output", "json");
+        amapUrl.searchParams.set("extensions", "base");
+        const resp = await fetch(amapUrl.toString());
+        const data = (await resp.json()) as {
+          status: string;
+          info: string;
+          route?: { paths?: { steps?: { polyline?: string }[] }[] };
+        };
+        if (data.status !== "1") {
+          sendJson(res, 502, { ok: false, error: `Amap: ${data.info}` });
+          return;
+        }
+        const steps = data.route?.paths?.[0]?.steps ?? [];
+        const polyline = steps.map((s) => s.polyline).filter(Boolean).join(";");
+        sendJson(res, 200, { ok: true, polyline });
+        return;
+      }
+
       const traceId = crypto.randomUUID();
       const raw = req.method === "POST" ? await readBody(req) : "{}";
       let body: Record<string, unknown> = {};
@@ -295,10 +328,11 @@ export function localFridayEdgePlugin(mode: string): Plugin {
         return;
       }
       const model = env.FRIDAY_MODEL?.trim() || "gpt-4o-mini";
+      const amapKey = env.AMAP_KEY?.trim() || "";
       console.log(
         `[local-friday-edge] 本地代理 plan/recommend/chat → Friday（${model}），无需 supabase login`,
       );
-      server.middlewares.use(createLocalFridayMiddleware(appId, model));
+      server.middlewares.use(createLocalFridayMiddleware(appId, model, amapKey));
     },
   };
 }

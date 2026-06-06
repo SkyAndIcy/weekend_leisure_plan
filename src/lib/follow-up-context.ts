@@ -1,5 +1,64 @@
 import { POI_CATALOG } from "../../shared/planning/poi-catalog";
+import { findLinkedPlanContext } from "@/lib/explore-suggestions";
+import { zoneKeyword } from "@/lib/poi-swap";
+import type { MapDeparturePoint } from "@/types/map";
 import type { DayPlan } from "@/types/itinerary";
+
+type PlanDisplayMessage = {
+  id: string;
+  role: string;
+  itinerary?: DayPlan[];
+  routePoints?: unknown[];
+  nearbyPoints?: unknown[];
+  departurePoint?: MapDeparturePoint;
+  planContext?: string;
+};
+
+/** 追问气泡无自有 itinerary 时，展示并编辑锚点方案 */
+export function resolveLinkedPlanDisplay(
+  messages: PlanDisplayMessage[],
+  msgIndex: number,
+): {
+  anchorIndex: number;
+  linkedPlanContext?: string;
+  displayItinerary?: DayPlan[];
+  displayRoutePoints?: unknown[];
+  displayNearbyPoints?: unknown[];
+  displayDeparturePoint?: MapDeparturePoint;
+  editMessageId: string;
+  isFollowUpReply: boolean;
+} {
+  const anchorIndex = findPlanAnchorIndex(messages);
+  const anchorMsg = anchorIndex >= 0 ? messages[anchorIndex] : undefined;
+  const linkedPlanContext = findLinkedPlanContext(messages, msgIndex);
+  const self = messages[msgIndex];
+  const displayItinerary = self?.itinerary?.length
+    ? self.itinerary
+    : linkedPlanContext && anchorMsg?.itinerary?.length
+      ? anchorMsg.itinerary
+      : undefined;
+  const editMessageId = self?.itinerary?.length ? self.id : (anchorMsg?.id ?? self.id);
+  const isFollowUpReply =
+    self?.role === "assistant" &&
+    !self?.itinerary?.length &&
+    !!linkedPlanContext &&
+    !!displayItinerary?.length;
+
+  return {
+    anchorIndex,
+    linkedPlanContext,
+    displayItinerary,
+    displayRoutePoints: (self?.routePoints?.length ? self.routePoints : anchorMsg?.routePoints) as
+      | unknown[]
+      | undefined,
+    displayNearbyPoints: (self?.nearbyPoints?.length
+      ? self.nearbyPoints
+      : anchorMsg?.nearbyPoints) as unknown[] | undefined,
+    displayDeparturePoint: self?.departurePoint ?? anchorMsg?.departurePoint,
+    editMessageId,
+    isFollowUpReply,
+  };
+}
 
 /** 从 planContext 时间轴 + 行程表提取已锁定 POI */
 export function extractPlannedPoiNames(
@@ -17,14 +76,6 @@ export function extractPlannedPoiNames(
     }
   }
   return [...names];
-}
-
-function zoneKeyword(homeLabel?: string): string {
-  if (!homeLabel) return "";
-  const m = homeLabel.match(
-    /(望京|中关村|三里屯|国贸|奥森|朝阳|海淀|西城|东城|丰台|通州|昌平|大兴|顺义|房山|门头沟|石景山|怀柔|密云|平谷|延庆|亦庄|回龙观|天通苑|五道口|西单|王府井)/,
-  );
-  return m?.[1] ?? "";
 }
 
 function isTooSimilarToLocked(name: string, locked: Set<string>): boolean {

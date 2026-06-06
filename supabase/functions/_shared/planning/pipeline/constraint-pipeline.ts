@@ -1,5 +1,6 @@
 import type { AiSemanticExtract } from "../semantic-types.ts";
 import { mergeConstraints } from "../semantic-merge.ts";
+import { inferMealKind, inferRoutePattern } from "../route-pattern.ts";
 import type { Constraints } from "../types";
 import type { EffectiveConstraints, PipelineStageLog } from "./types";
 
@@ -36,6 +37,9 @@ export function buildEffectiveConstraints(
     max: hMax * 60,
   };
 
+  const routePattern = inferRoutePattern(merged.rawGoal, semantic.wantExtra);
+  const mealKind = inferMealKind(merged.rawGoal, merged.departureHour);
+
   const effective: EffectiveConstraints = {
     ...merged,
     maxDistanceKm: dist.km,
@@ -44,6 +48,8 @@ export function buildEffectiveConstraints(
     wantExtra: semantic.wantExtra,
     timeBudgetMin,
     intentSummary: semantic.intentSummary,
+    routePattern,
+    mealKind,
   };
 
   const stages: PipelineStageLog[] = [
@@ -52,7 +58,9 @@ export function buildEffectiveConstraints(
       nameZh: "约束融合（规则 baseline + AI 语义）",
       inputCount: 2,
       outputCount: 1,
-      note: dist.note ?? `硬距离 ${effective.hardMaxDistanceKm}km，时间 ${hMin}-${hMax}h，加项=${effective.wantExtra}`,
+      note:
+        dist.note ??
+        `硬距离 ${effective.hardMaxDistanceKm}km，时间 ${hMin}-${hMax}h，动线=${routePattern}，${mealKind}，加项=${effective.wantExtra}`,
     },
     {
       stage: "constraint_split",

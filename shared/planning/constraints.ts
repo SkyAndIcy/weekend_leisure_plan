@@ -36,10 +36,21 @@ export function extractConstraints(text: string): Constraints {
   if (scenario === "friends" && !partyTotal) partyTotal = 4;
 
   let departureHour = 14;
-  const pmMatch = t.match(/下午\s*(\d{1,2})\s*点/);
-  const amMatch = t.match(/上午\s*(\d{1,2})\s*点/);
+  const pmMatch = t.match(/下午\s*(\d{1,2})\s*点?/);
+  const amMatch = t.match(/上午\s*(\d{1,2})\s*点?/);
+  const noonMatch = t.match(/中午|正午/);
+  const eveMatch = t.match(/晚上|傍晚/);
+  const hmMatch = t.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
   if (pmMatch) departureHour = parseInt(pmMatch[1], 10);
   else if (amMatch) departureHour = parseInt(amMatch[1], 10);
+  else if (noonMatch) departureHour = 11;
+  else if (eveMatch) departureHour = 17;
+  else if (hmMatch) departureHour = parseInt(hmMatch[1], 10);
+  else if (/早饭|早餐|早上出发/.test(t)) departureHour = 9;
+  else if (/午饭|午餐/.test(t) && !/下午|晚上/.test(t)) departureHour = 11;
+  else if (/晚饭|晚餐/.test(t)) departureHour = 17;
+
+  departureHour = Math.max(8, Math.min(20, departureHour));
 
   let maxDistanceKm = 8;
   if (/别太远|不远|附近|就近|离家近/.test(t)) maxDistanceKm = 5;

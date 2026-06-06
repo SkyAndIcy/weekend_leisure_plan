@@ -1,6 +1,6 @@
 # 周末本地活动 Agent — 设计说明（≤2 页）
 
-> 附人话说明版见 [DESIGN-PLAIN.md](./DESIGN-PLAIN.md)
+> 人话说明版（与本文同结构）：[DESIGN-PLAIN.md](./DESIGN-PLAIN.md)
 
 **目标**：将「自然语言 + 出发点」转为 **4–6 小时可执行半日行程**（玩 → 吃 → 可选加项），并完成订座/排队/分享等闭环演示。  
 **规划入口**：`shared/planning/` ← 前端 `plan-api.ts` / Edge `plan`  
@@ -36,7 +36,16 @@ POI：`shared/planning/beijing-zones.ts`（**34 商圈** Mock，含 **798艺术�
 
 ### 1.4 推荐（Recommend）
 
-Top6 玩 × Top6 吃 × 可选加项；组合分含顺路/时间/多样性；满座同池换店。输出 `timeline`（玩 → +20min → 吃 → +15min → 加项）。
+Top6 玩 × Top6 吃 × 可选加项；组合分含顺路/时间/多样性；满座同池换店。时间轴由 `timeline-builder.ts` 按 **动线模板** 编排：
+
+| 模板 | 触发示例 | 顺序 |
+|------|----------|------|
+| `play_eat` / `play_eat_extra` | 默认 / 要加项 | 玩 → 吃 [→ 加项] |
+| `play_eat_play` | 玩.*吃.*玩、多个景点 | 玩 → 吃 → 玩 |
+| `eat_play` | 先吃、吃完再玩 | 吃 → 玩 |
+| `eat_play_play` | 先吃 + 多处玩 | 吃 → 玩 → 玩 |
+
+**正餐时段**：`mealKind` 午餐 **11:00–13:00** / 晚餐 **17:00–20:00**（话术或出发时刻推断），吃饭落点锚定在窗口内，而非紧跟出发时刻顺延。
 
 ### 1.5 场景加权
 
@@ -82,7 +91,7 @@ Mock → `toolTrace`；DAG → `pipelineTrace`、`dagEdges`。
 → planToUi(unbooked) → chat → 用户点「立即预定」→ pending
 ```
 
-**前端分支**：改行程 `itinerary-edit.ts`；追问 `follow-up-context.ts` + `explore-suggestions.ts`（半日不推住宿）；继续探索在行程表下方。
+**前端分支**：改行程 `itinerary-edit.ts`；追问 `follow-up-context.ts` + `explore-suggestions.ts`（半日不推住宿）；追问气泡通过 `resolveLinkedPlanDisplay` 挂锚点行程表/地图；继续探索在行程表下方。
 
 ---
 
@@ -112,6 +121,8 @@ Mock → `toolTrace`；DAG → `pipelineTrace`、`dagEdges`。
 ## 4. 前端与持久化
 
 **展示顺序**：compact 摘要 → 行程表（删/换/预定）→ 继续探索 → 地图 Tab。餐厅与景点均需手点「立即预定」。
+
+**行程统一**：问小喵「添加到我的行程」→ `addChatPlanToItineraryTrips` 写入 `weekendmiao_itinerary_trips`；「上一家 / 换一家」走 `poi-swap.ts`（换一家全城随机 + `swapHistory` 栈；上一家弹栈回退）；`itinerary-route-sync.ts` 同步地图标点。
 
 **侧栏**：真实多会话（新建/切换/删除）；空对话不重复堆「新对话」。
 

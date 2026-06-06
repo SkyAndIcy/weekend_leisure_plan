@@ -1,5 +1,14 @@
 export type Status = "unbooked" | "pending" | "completed" | "expired";
 
+/** 换店前的快照，供「上一家」真实回退 */
+export interface SwapHistoryEntry {
+  poiId: string;
+  name: string;
+  description: string;
+  price: string;
+  swapCycleIndex?: number;
+}
+
 export interface ItineraryItem {
   id: string;
   time: string;
@@ -9,6 +18,12 @@ export interface ItineraryItem {
   price: string;
   status: Status;
   code?: string;
+  /** 当前店在全城候选池中的下标（换一家随机用） */
+  swapCycleIndex?: number;
+  /** 换店栈：上一家弹出栈顶 */
+  swapHistory?: SwapHistoryEntry[];
+  /** @deprecated */
+  swapExclude?: string[];
 }
 
 export interface DayPlan {
@@ -16,6 +31,8 @@ export interface DayPlan {
   date: string;
   period: string;
   items: ItineraryItem[];
+  /** 用户删除的站点，保留在卡片底部可「加回来」 */
+  removedItems?: ItineraryItem[];
 }
 
 export const statusConfig = {

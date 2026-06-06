@@ -1,5 +1,11 @@
 import { POI_CATALOG } from "./poi-catalog.ts";
 import { runPlanningDag } from "./pipeline/dag-orchestrator.ts";
+import { routePatternLabel } from "./route-pattern.ts";
+import {
+  buildNotifyText,
+  buildTimeline,
+  pickSecondPlay,
+} from "./timeline-builder.ts";
 import {
   mockHoldTable,
   mockNotifyContact,
@@ -7,14 +13,8 @@ import {
   mockQueueStatus,
 } from "./mock-tools.ts";
 import type { SemanticResolver } from "./semantic-types.ts";
-import type { TimelineSlot, WeekendPlan } from "./types.ts";
-
-function fmtClock(totalMin: number): string {
-  const t = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h = Math.floor(t / 60);
-  const m = t % 60;
-  return `${h}:${m.toString().padStart(2, "0")}`;
-}
+import type { RoutePattern } from "./route-pattern.ts";
+import type { WeekendPlan } from "./types.ts";
 
 /** 规则 DAG + Mock 履约，生成 WeekendPlan（语义由 resolveSemantic 注入） */
 export async function buildWeekendPlanCore(
@@ -33,7 +33,7 @@ export async function buildWeekendPlanCore(
     resolveSemantic,
   );
 
-  const { effective, pools, combo, home, graphTrace, edges, retryCount, toolTrace } = dag;
+  const { effective, pools, combo, home, graphTrace, edges, toolTrace } = dag;
 
   const play = combo.play.poi;
   const eat = combo.eat.poi;
@@ -52,55 +52,40 @@ export async function buildWeekendPlanCore(
     toolTrace.push(pre.trace);
   }
 
-  const departMin = effective.departureHour * 60;
-  const playEnd = departMin + play.durationMin;
-  const transit1 = 20;
-  const eatEnd = playEnd + transit1 + eat.durationMin;
-  const transit2 = 15;
-  const extraEnd = eatEnd + transit2 + (extra?.durationMin ?? 45);
-
-  const timeline: TimelineSlot[] = [
-    {
-      start: fmtClock(departMin),
-      end: fmtClock(playEnd),
-      phase: "play",
-      poi: play,
-      notes: play.description,
-    },
-    {
-      start: fmtClock(playEnd + transit1),
-      end: fmtClock(eatEnd),
-      phase: "eat",
-      poi: eat,
-      notes:
-        queue.queueMin > 0
-          ? `推荐就餐，高峰约排队${queue.queueMin}分钟，请在行程表点击「立即预定」`
-          : "推荐就餐，请在行程表点击「立即预定」",
-    },
-  ];
-
-  if (extra) {
-    timeline.push({
-      start: fmtClock(eatEnd + transit2),
-      end: fmtClock(extraEnd),
-      phase: "extra",
-      poi: extra,
-      notes: extra.description,
-    });
+  let pattern: RoutePattern = effective.routePattern;
+  let play2 = null;
+  if (pattern === "play_eat_play" || pattern === "eat_play_play") {
+    play2 = pickSecondPlay(pools.attraction, play.id);
+    if (!play2) {
+      pattern =
+        pattern === "eat_play_play"
+          ? "eat_play"
+          : effective.wantExtra
+            ? "play_eat_extra"
+            : "play_eat";
+    }
   }
 
-  const departPhrase =
-    effective.departureHour < 12
-      ? `上午${effective.departureHour}点`
-      : effective.departureHour === 12
-        ? "中午12点"
-        : `下午${effective.departureHour}点`;
+  const useExtra = pattern === "play_eat_extra" ? extra : null;
 
-  const notifyText = `搞定了，${departPhrase}出发：先去${play.name}（${fmtClock(departMin)}-${fmtClock(playEnd)}），再去${eat.name}用餐（记得在行程表点「立即预定」）${extra ? `，最后${extra.name}收尾` : ""}。`;
+  const departMin = effective.departureHour * 60;
+  const timelineFixed = buildTimeline({
+    pattern,
+    mealKind: effective.mealKind,
+    departMin,
+    play,
+    eat,
+    extra: useExtra,
+    play2,
+    queueMin: queue.queueMin,
+  });
 
+  const patternLabel = routePatternLabel(pattern);
+  const notifyText = buildNotifyText(timelineFixed, effective.mealKind, patternLabel);
   toolTrace.push(mockNotifyContact(notifyText));
 
   const scenarioLabel = effective.scenario === "family" ? "家庭亲子" : "朋友小聚";
+  const mealLabel = effective.mealKind === "lunch" ? "午餐" : "晚餐";
 
   const pipelineTrace = graphTrace.map((n) => ({
     stage: n.stage,
@@ -113,13 +98,13 @@ export async function buildWeekendPlanCore(
   }));
 
   return {
-    summary: `${scenarioLabel} · ${effective.durationHours[0]}-${effective.durationHours[1]}小时 · ${effective.hardMaxDistanceKm}km内`,
+    summary: `${scenarioLabel} · ${patternLabel} · ${mealLabel} · ${effective.durationHours[0]}-${effective.durationHours[1]}小时 · ${effective.hardMaxDistanceKm}km内`,
     scenario: effective.scenario,
     homeLabel: home.label,
     homeLat: home.lat,
     homeLng: home.lng,
     constraints: effective,
-    timeline,
+    timeline: timelineFixed,
     bookings,
     toolTrace,
     notifyText,

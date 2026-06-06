@@ -5,8 +5,8 @@ import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import mascotImg from "@/assets/cat-mascot.png";
 import QuickFillTemplate from "@/components/QuickFillTemplate";
-import ChatItineraryCard from "@/components/chat/ChatItineraryCard";
-import ChatRouteMap, { type MapPoint } from "@/components/chat/ChatRouteMap";
+import ChatItineraryCard, { type ItinerarySwapPayload } from "@/components/chat/ChatItineraryCard";
+import ChatRouteMap from "@/components/chat/ChatRouteMap";
 import ArticleCard from "@/components/chat/ArticleCard";
 import ContinueExplore from "@/components/chat/ContinueExplore";
 import LocationPage from "@/components/LocationPage";
@@ -14,6 +14,8 @@ import LocationPermissionModal from "@/components/LocationPermissionModal";
 import HistorySidebar from "@/components/HistorySidebar";
 import { useLocation } from "@/hooks/use-location";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { addChatPlanToItineraryTrips, syncActiveTripDays } from "@/lib/itinerary-trips";
 import { streamChatCompletion } from "@/lib/chat-stream";
 import { fridayTracePayload } from "@/lib/friday-trace";
 import { AiSemanticError } from "@/lib/recommendation/ai-semantic";
@@ -22,12 +24,15 @@ import { buildWeekendPlan, planContextForLlm } from "@/lib/recommendation/planne
 import { planToUi } from "@/lib/recommendation/plan-to-ui";
 import {
   buildExploreGuides,
-  findLinkedPlanContext,
   findPlanningUserHint,
   isFollowUpQuery,
   lastAssistantMessageIndex,
 } from "@/lib/explore-suggestions";
-import { buildFollowUpMemoryBlock, findPlanAnchorIndex } from "@/lib/follow-up-context";
+import {
+  buildFollowUpMemoryBlock,
+  findPlanAnchorIndex,
+  resolveLinkedPlanDisplay,
+} from "@/lib/follow-up-context";
 import {
   appendPoiToPlanContext,
   buildItineraryEditReply,
@@ -45,6 +50,13 @@ import {
   type StoredMessage,
 } from "@/lib/chat-sessions";
 import type { WeekendPlan } from "@/lib/recommendation/types";
+import {
+  departureFromLocation,
+  reanchorRouteToDeparture,
+  resolveHomeFromLabel,
+  syncRoutePointAtIndex,
+} from "@/lib/itinerary-route-sync";
+import type { MapDeparturePoint, MapPoint } from "@/types/map";
 import type { DayPlan } from "@/types/itinerary";
 
 const initialSession = initChatSessionState();
@@ -65,6 +77,7 @@ interface Message {
   itinerary?: DayPlan[];
   routePoints?: MapPoint[];
   nearbyPoints?: MapPoint[];
+  departurePoint?: MapDeparturePoint;
   /** 规则引擎方案上下文，供追问复用 */
   planContext?: string;
 }
@@ -91,12 +104,14 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
   const { location, requestGPS, selectAddress, selectManualText } = useLocation();
   const [showLocationPage, setShowLocationPage] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  /** 从地图「修改出发点」进入选址时，回写对应方案消息 */
+  const [departureEditMsgId, setDepartureEditMsgId] = useState<string | null>(null);
 
   const suggestions = [
     "今天下午带5岁孩子出去玩，别太远，2-3小时",
-    "和老婆下午有空，想找个近的地方吃饭+逛逛",
+    "中午先吃午饭，下午再逛两个地方",
+    "先逛逛再吃晚饭，晚上8点前回家",
     "朋友聚会，找个下午能玩3小时的地方",
-    "周末带父母出去，轻松不累，附近就行",
   ];
 
   useEffect(() => {
@@ -346,6 +361,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
         itinerary: planUi.days,
         routePoints: planUi.routePoints,
         nearbyPoints: planUi.nearbyPoints,
+        departurePoint: planUi.departurePoint,
       },
     ]);
 
@@ -380,6 +396,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                 itinerary: planUi.days,
                 routePoints: planUi.routePoints,
                 nearbyPoints: planUi.nearbyPoints,
+                departurePoint: planUi.departurePoint,
               }
             : m,
         ),
@@ -397,6 +414,7 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                 itinerary: planUi.days,
                 routePoints: planUi.routePoints,
                 nearbyPoints: planUi.nearbyPoints,
+                departurePoint: planUi.departurePoint,
               }
             : m,
         ),
@@ -412,7 +430,50 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
   };
 
   const handleUpdateItinerary = (msgId: string, days: DayPlan[]) => {
-    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, itinerary: days } : m)));
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msgId
+          ? {
+              ...m,
+              itinerary: days.map((d) => ({
+                ...d,
+                items: d.items.map((it) => ({ ...it })),
+                removedItems: d.removedItems?.map((it) => ({ ...it })),
+              })),
+            }
+          : m,
+      ),
+    );
+    syncActiveTripDays(days);
+  };
+
+  const handleItineraryItemSwapped = (msgId: string, payload: ItinerarySwapPayload) => {
+    const anchorMsg = messages.find((m) => m.id === msgId);
+    const home = anchorMsg?.departurePoint
+      ? {
+          lat: anchorMsg.departurePoint.lat,
+          lng: anchorMsg.departurePoint.lng,
+          label: anchorMsg.departurePoint.label,
+        }
+      : resolveHomeFromLabel(
+          location.displayName || location.fullAddress,
+          location.coords,
+        );
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId || !m.routePoints?.length) return m;
+        return {
+          ...m,
+          routePoints: syncRoutePointAtIndex(
+            m.routePoints,
+            payload.itemIdx,
+            payload.poi,
+            home,
+            payload.itemType,
+          ),
+        };
+      }),
+    );
   };
 
   const handleUpdateRoute = (msgId: string, points: MapPoint[]) => {
@@ -448,7 +509,31 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
     coords?: { lat: number; lng: number },
   ) => {
     selectAddress(name, detail, coords);
+    const dep = departureFromLocation({
+      displayName: name,
+      fullAddress: detail,
+      coords,
+    });
+
+    if (departureEditMsgId) {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== departureEditMsgId) return m;
+          const routePoints = m.routePoints?.length
+            ? reanchorRouteToDeparture(m.routePoints, dep)
+            : m.routePoints;
+          return { ...m, departurePoint: dep, routePoints };
+        }),
+      );
+      setDepartureEditMsgId(null);
+    }
+
     setShowLocationPage(false);
+  };
+
+  const openDepartureEditor = (msgId: string) => {
+    setDepartureEditMsgId(msgId);
+    setShowLocationPage(true);
   };
 
   const handlePermissionAllow = () => {
@@ -579,7 +664,9 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
           <AnimatePresence>
             {messages.map((msg, msgIndex) => {
               const lastAiIndex = lastAssistantMessageIndex(messages);
-              const linkedPlanContext = findLinkedPlanContext(messages, msgIndex);
+              const planDisplay = resolveLinkedPlanDisplay(messages, msgIndex);
+              const linkedPlanContext = planDisplay.linkedPlanContext;
+              const displayItinerary = planDisplay.displayItinerary;
               const showContinueExplore =
                 msg.role === "assistant" &&
                 !msg.streaming &&
@@ -616,7 +703,10 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                     <div className="flex-1 min-w-0">
 
                       {!msg.streaming && /^\s*#\s/.test(msg.content) ? (
-                        <ArticleCard content={msg.content} compact={!!msg.itinerary?.length} />
+                        <ArticleCard
+                          content={msg.content}
+                          compact={!!displayItinerary?.length}
+                        />
                       ) : (
                         <div
                           className="bg-card rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed border border-border/70 prose prose-sm max-w-none"
@@ -626,8 +716,15 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                         </div>
                       )}
 
-                      {/* View mode toggle */}
-                      {msg.itinerary && msg.itinerary.length > 0 && (
+                      {planDisplay.isFollowUpReply && !msg.streaming && (
+                        <p className="mt-2 text-[11px] text-muted-foreground leading-snug">
+                          上文是备选说明，尚未自动写入行程；下方仍是当前已定方案，可点「换一个」调整。
+                        </p>
+                      )}
+
+                      {/* View mode toggle — 追问也挂锚点行程表 */}
+                      {(displayItinerary?.length || planDisplay.displayDeparturePoint) &&
+                        linkedPlanContext && (
                         <div className="mt-2">
                           <div className="flex bg-muted rounded-xl p-0.5 mb-2 border border-border/50">
                             <button
@@ -644,28 +741,71 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
                             </button>
                           </div>
                           {viewMode === "list" ? (
-                            <ChatItineraryCard days={msg.itinerary} onUpdate={(days) => handleUpdateItinerary(msg.id, days)} onAddToTrip={() => {}} />
+                            <ChatItineraryCard
+                              key={`itin-${planDisplay.editMessageId}-${displayItinerary[0]?.items.map((i) => `${i.id}:${i.name}`).join("|") ?? ""}`}
+                              days={displayItinerary}
+                              homeLabel={location.displayName || location.fullAddress}
+                              onUpdate={(days) =>
+                                handleUpdateItinerary(planDisplay.editMessageId, days)
+                              }
+                              onAddToTrip={() => {
+                                if (!displayItinerary?.length) return;
+                                const first = displayItinerary[0];
+                                addChatPlanToItineraryTrips({
+                                  days: displayItinerary,
+                                  title: first?.period,
+                                  dates: first?.date,
+                                });
+                                toast.success("已加入「我的行程」", {
+                                  description: "切换到「行程」Tab 可继续编辑与预定",
+                                });
+                              }}
+                              onItemSwapped={(payload) =>
+                                handleItineraryItemSwapped(planDisplay.editMessageId, payload)
+                              }
+                            />
                           ) : (
                             <ChatRouteMap
-                              routePoints={msg.routePoints || []}
-                              nearbyPoints={msg.nearbyPoints || []}
-                              onUpdateRoute={(points) => handleUpdateRoute(msg.id, points)}
-                              onAddToRoute={(point) => handleAddToRoute(msg.id, point)}
-                              onRemoveFromRoute={(pointId) => handleRemoveFromRoute(msg.id, pointId)}
+                              departurePoint={
+                                planDisplay.displayDeparturePoint ??
+                                departureFromLocation({
+                                  displayName: location.displayName,
+                                  fullAddress: location.fullAddress,
+                                  coords: location.coords,
+                                })
+                              }
+                              routePoints={(planDisplay.displayRoutePoints as MapPoint[]) || []}
+                              nearbyPoints={(planDisplay.displayNearbyPoints as MapPoint[]) || []}
+                              onEditDeparture={() =>
+                                openDepartureEditor(planDisplay.editMessageId)
+                              }
+                              onUpdateRoute={(points) =>
+                                handleUpdateRoute(planDisplay.editMessageId, points)
+                              }
+                              onAddToRoute={(point) =>
+                                handleAddToRoute(planDisplay.editMessageId, point)
+                              }
+                              onRemoveFromRoute={(pointId) =>
+                                handleRemoveFromRoute(planDisplay.editMessageId, pointId)
+                              }
                             />
                           )}
                         </div>
                       )}
 
                       {showContinueExplore && linkedPlanContext && (
-                        <ContinueExplore
-                          guides={buildExploreGuides(
-                            linkedPlanContext,
-                            location.displayName || location.fullAddress,
-                            planningUserHint,
-                          )}
-                          onGuideClick={(text) => handleSend(text)}
-                        />
+                          <ContinueExplore
+                            guides={buildExploreGuides({
+                              planContext: linkedPlanContext,
+                              locationLabel:
+                                location.displayName || location.fullAddress,
+                              userHint: planningUserHint,
+                              itinerary: displayItinerary,
+                              messages,
+                              planMessageIndex: planDisplay.anchorIndex,
+                            })}
+                            onGuideClick={(text) => handleSend(text)}
+                          />
                       )}
                     </div>
                   </div>
@@ -783,7 +923,10 @@ const AskXiaoTuan = ({ showSidebar, onSidebarChange }: AskXiaoTuanProps) => {
         {showLocationPage && (
           <LocationPage
             currentAddress={location.displayName}
-            onBack={() => setShowLocationPage(false)}
+            onBack={() => {
+              setShowLocationPage(false);
+              setDepartureEditMsgId(null);
+            }}
             onSelect={handleLocationSelect}
             onRelocate={() => {
               requestGPS();

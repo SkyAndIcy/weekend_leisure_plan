@@ -1,24 +1,17 @@
 import { useState } from "react";
-import { MapPin, Utensils, Hotel, Plus, X, GripVertical, Ticket, CheckCircle2 } from "lucide-react";
+import { MapPin, Utensils, Hotel, Plus, X, GripVertical, Ticket, CheckCircle2, Navigation, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface MapPoint {
-  id: string;
-  name: string;
-  type: "scenic" | "food" | "hotel";
-  x: number; // percentage 0-100
-  y: number;
-  inRoute: boolean;
-  description?: string;
-  price?: string;
-}
+import LeafletRouteMap from "@/components/chat/LeafletRouteMap";
+import type { MapDeparturePoint, MapPoint } from "@/types/map";
 
 interface Props {
   routePoints: MapPoint[];
   nearbyPoints: MapPoint[];
+  departurePoint?: MapDeparturePoint;
   onUpdateRoute: (points: MapPoint[]) => void;
   onAddToRoute: (point: MapPoint) => void;
   onRemoveFromRoute: (pointId: string) => void;
+  onEditDeparture?: () => void;
 }
 
 const typeIcon = { scenic: MapPin, food: Utensils, hotel: Hotel };
@@ -28,24 +21,6 @@ const typeColor = {
   hotel:  { bg: "bg-purple-500",      text: "text-purple-500",     border: "border-purple-300",        dot: "#a855f7" },
 };
 
-// Default Hangzhou route data
-const defaultRoutePoints: MapPoint[] = [
-  { id: "r1", name: "西湖风景区",   type: "scenic", x: 30, y: 25, inRoute: true, description: "漫步苏堤", price: "免费" },
-  { id: "r2", name: "楼外楼",       type: "food",   x: 48, y: 35, inRoute: true, description: "西湖醋鱼", price: "¥198" },
-  { id: "r3", name: "灵隐寺",       type: "scenic", x: 22, y: 18, inRoute: true, description: "千年古刹", price: "¥75" },
-  { id: "r4", name: "河坊街夜市",   type: "food",   x: 58, y: 60, inRoute: true, description: "地道小吃", price: "人均¥50" },
-  { id: "r5", name: "西湖亚朵酒店", type: "hotel",  x: 42, y: 72, inRoute: true, description: "含双早",   price: "¥458" },
-];
-const defaultNearbyPoints: MapPoint[] = [
-  { id: "n1", name: "雷峰塔",   type: "scenic", x: 38, y: 48, inRoute: false, description: "西湖十景之一", price: "¥40" },
-  { id: "n2", name: "龙井茶园", type: "scenic", x: 15, y: 45, inRoute: false, description: "采茶体验",     price: "¥120" },
-  { id: "n3", name: "知味观",   type: "food",   x: 65, y: 28, inRoute: false, description: "小笼包",       price: "人均¥85" },
-  { id: "n4", name: "苏堤春晓", type: "scenic", x: 28, y: 38, inRoute: false, description: "西湖苏堤",     price: "免费" },
-  { id: "n5", name: "断桥残雪", type: "scenic", x: 45, y: 15, inRoute: false, description: "白娘子传说",   price: "免费" },
-  { id: "n6", name: "外婆家",   type: "food",   x: 72, y: 50, inRoute: false, description: "杭帮菜",       price: "人均¥75" },
-];
-
-// ── route booking item ────────────────────────────────────────────────────────
 const RouteListItem = ({
   point,
   idx,
@@ -74,74 +49,91 @@ const RouteListItem = ({
   const tc = typeColor[point.type];
 
   return (
-    <div className="flex gap-2.5">
-      {/* Timeline spine */}
+    <div className="flex gap-2.5 min-w-0">
       <div className="flex flex-col items-center shrink-0 w-5 mt-1">
         <div className={`w-5 h-5 rounded-full ${tc.bg} flex items-center justify-center shadow-sm border-2 border-card z-10`}>
           <span className="text-white text-[8px] font-bold">{idx + 1}</span>
         </div>
-        {!isLast && <div className="w-0.5 flex-1 mt-0.5 bg-border min-h-[24px]" />}
+        {!isLast && <div className="w-0.5 flex-1 mt-1 bg-border min-h-[24px]" />}
       </div>
-
-      {/* Draggable card */}
       <div
         draggable
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragEnd={onDragEnd}
-        className={`flex-1 mb-3 flex items-center gap-2 px-2.5 py-2 rounded-xl border transition-all cursor-grab active:cursor-grabbing ${
+        className={`flex-1 min-w-0 mb-3 rounded-xl border px-2.5 py-2 transition-all cursor-grab active:cursor-grabbing overflow-hidden ${
           dragOverIdx === idx ? "border-primary/50 bg-primary/5 shadow-sm" : "border-border bg-muted/30 hover:bg-muted/50"
         } ${draggedIdx === idx ? "opacity-40" : ""}`}
       >
-        <GripVertical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <Icon className={`w-3.5 h-3.5 shrink-0 ${tc.text}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold truncate">{point.name}</p>
-          {point.description && <p className="text-[10px] text-muted-foreground truncate">{point.description}</p>}
+        <div className="flex items-start gap-2">
+          <GripVertical className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+          <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${tc.text}`} />
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-semibold leading-snug break-words">{point.name}</p>
+              {point.price && (
+                <span className="text-[10px] text-meituan-red font-semibold shrink-0 whitespace-nowrap">
+                  {point.price}
+                </span>
+              )}
+            </div>
+            {point.description && (
+              <p className="text-[10px] text-muted-foreground leading-snug mt-1 line-clamp-2 break-words">
+                {point.description}
+              </p>
+            )}
+          </div>
         </div>
-        {point.price && <span className="text-[10px] text-meituan-red font-semibold shrink-0">{point.price}</span>}
-        <button
-          onClick={() => setBooked(!booked)}
-          className={`flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-all shrink-0 ${
-            booked
-              ? "bg-meituan-green/10 text-meituan-green"
-              : "bg-primary text-primary-foreground hover:bg-meituan-yellow-hover"
-          }`}
-        >
-          {booked ? (
-            <><CheckCircle2 className="w-2.5 h-2.5" />已预定</>
-          ) : (
-            <><Ticket className="w-2.5 h-2.5" />预定</>
-          )}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="p-0.5 rounded hover:bg-meituan-red/10 text-muted-foreground hover:text-meituan-red transition-colors shrink-0"
-        >
-          <X className="w-3 h-3" />
-        </button>
+        <div className="flex items-center justify-end gap-1.5 mt-2 pl-7">
+          <button
+            type="button"
+            onClick={() => setBooked(!booked)}
+            className={`flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-all whitespace-nowrap ${
+              booked
+                ? "bg-meituan-green/10 text-meituan-green"
+                : "bg-primary text-primary-foreground hover:bg-meituan-yellow-hover"
+            }`}
+          >
+            {booked ? (
+              <><CheckCircle2 className="w-2.5 h-2.5" />已预定</>
+            ) : (
+              <><Ticket className="w-2.5 h-2.5" />预定</>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="flex items-center gap-0.5 text-[10px] font-medium px-2 py-0.5 rounded-md bg-meituan-red/10 text-meituan-red hover:bg-meituan-red/20 whitespace-nowrap"
+          >
+            <X className="w-3 h-3" />移除
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
-// ── main component ────────────────────────────────────────────────────────────
 const ChatRouteMap = ({
   routePoints: propRoutePoints,
   nearbyPoints: propNearbyPoints,
+  departurePoint,
   onUpdateRoute,
   onAddToRoute,
   onRemoveFromRoute,
+  onEditDeparture,
 }: Props) => {
-  const routePoints = propRoutePoints.length > 0 ? propRoutePoints : defaultRoutePoints;
-  const nearbyPoints = propNearbyPoints.length > 0 ? propNearbyPoints : defaultNearbyPoints;
+  const routePoints = propRoutePoints;
+  const nearbyPoints = propNearbyPoints;
+  const hasRoute = routePoints.length > 0;
+  const hasDeparture = !!departurePoint;
 
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-
-  const routePolyline = routePoints.map((p) => `${(p.x / 100) * 400},${(p.y / 100) * 300}`).join(" ");
 
   const handleDragStart = (idx: number) => setDraggedIdx(idx);
   const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx); };
@@ -155,100 +147,53 @@ const ChatRouteMap = ({
     setDragOverIdx(null);
   };
 
+  if (!hasRoute && !hasDeparture) {
+    return (
+      <div className="mt-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+        <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+        <p className="text-xs text-muted-foreground">暂无路线点位</p>
+        <p className="text-[10px] text-muted-foreground mt-1">请先完成规划，或切回行程表查看</p>
+      </div>
+    );
+  }
+
+  const depLabel = departurePoint?.label.split("·").pop() ?? departurePoint?.label ?? "出发点";
+
   return (
     <div className="mt-2 space-y-2">
-      {/* ── Map area ── */}
       <div className="bg-card rounded-xl border border-border overflow-hidden shadow-card">
-        <div className="relative overflow-hidden" style={{ aspectRatio: "4/3" }}>
-          {/* Map background */}
-          <div className="absolute inset-0 bg-[hsl(210_20%_95%)]" />
-
-          {/* Water body */}
-          <div className="absolute top-[22%] left-[18%] w-[38%] h-[32%] rounded-[50%] bg-[hsl(200_60%_85%)] opacity-60" />
-          <div className="absolute top-[28%] left-[24%] w-[26%] h-[22%] rounded-[50%] bg-[hsl(200_60%_80%)] opacity-50" />
-          <p className="absolute top-[37%] left-[28%] text-[10px] text-[hsl(200_50%_55%)] font-medium select-none">西湖</p>
-
-          {/* Grid lines */}
-          <div className="absolute top-[15%] left-[10%] w-[80%] h-px bg-[hsl(0_0%_78%)]" />
-          <div className="absolute top-[55%] left-[5%] w-[90%] h-px bg-[hsl(0_0%_78%)]" />
-          <div className="absolute top-[10%] left-[50%] w-px h-[80%] bg-[hsl(0_0%_78%)]" />
-          <div className="absolute top-[10%] left-[75%] w-px h-[70%] bg-[hsl(0_0%_78%)]" />
-
-          {/* Route line SVG */}
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 300" preserveAspectRatio="none">
-            <polyline
-              points={routePolyline}
-              fill="none"
-              stroke="hsl(43 100% 50%)"
-              strokeWidth="2.5"
-              strokeDasharray="7 4"
-              opacity="0.85"
-            />
-            {routePoints.slice(0, -1).map((p, i) => {
-              const next = routePoints[i + 1];
-              const mx = ((p.x + next.x) / 2 / 100) * 400;
-              const my = ((p.y + next.y) / 2 / 100) * 300;
-              return <circle key={`mid-${i}`} cx={mx} cy={my} r="3" fill="hsl(43 100% 50%)" opacity="0.55" />;
-            })}
-          </svg>
-
-          {/* Route points */}
-          {routePoints.map((point, idx) => {
-            const tc = typeColor[point.type];
-            const Icon = typeIcon[point.type];
-            return (
-              <div
-                key={point.id}
-                className="absolute flex flex-col items-center cursor-pointer group"
-                style={{ left: `${point.x}%`, top: `${point.y}%`, transform: "translate(-50%,-50%)" }}
-                onClick={() => setSelectedPoint(point === selectedPoint ? null : point)}
+        {hasDeparture && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/70 bg-meituan-green/5">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <Navigation className="w-3.5 h-3.5 text-meituan-green shrink-0" />
+              <span className="text-[10px] text-muted-foreground shrink-0">出发点</span>
+              <span className="text-[11px] font-semibold truncate">{depLabel}</span>
+            </div>
+            {onEditDeparture && (
+              <button
+                type="button"
+                onClick={onEditDeparture}
+                className="flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-medium text-meituan-green bg-meituan-green/10 hover:bg-meituan-green/20 shrink-0"
               >
-                <div className="relative">
-                  <div className={`absolute -inset-1.5 rounded-full ${tc.bg} opacity-20 group-hover:opacity-30 animate-pulse`} />
-                  <div className={`w-7 h-7 rounded-full ${tc.bg} flex items-center justify-center shadow-md border-2 border-card relative z-10`}>
-                    <Icon className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <span className="absolute -top-2 -right-2 w-4 h-4 bg-primary text-primary-foreground text-[8px] font-bold rounded-full flex items-center justify-center z-20">
-                    {idx + 1}
-                  </span>
-                </div>
-                <span className="text-[9px] mt-0.5 font-medium bg-card/90 px-1.5 rounded shadow-sm whitespace-nowrap">
-                  {point.name}
-                </span>
-              </div>
-            );
-          })}
-
-          {/* Nearby points */}
-          {nearbyPoints.map((point) => {
-            const tc = typeColor[point.type];
-            const Icon = typeIcon[point.type];
-            return (
-              <div
-                key={point.id}
-                className="absolute flex flex-col items-center cursor-pointer opacity-45 hover:opacity-100 transition-opacity"
-                style={{ left: `${point.x}%`, top: `${point.y}%`, transform: "translate(-50%,-50%)" }}
-                onClick={() => setSelectedPoint(point === selectedPoint ? null : point)}
-              >
-                <div className={`w-5 h-5 rounded-full ${tc.bg} flex items-center justify-center shadow-sm border border-card/60`}>
-                  <Icon className="w-2.5 h-2.5 text-white" />
-                </div>
-                <span className="text-[8px] mt-0.5 text-muted-foreground bg-card/75 px-1 rounded whitespace-nowrap">
-                  {point.name}
-                </span>
-              </div>
-            );
-          })}
-
-          {/* Hint */}
-          <div className="absolute bottom-2 left-2 bg-card/85 rounded-lg px-2 py-1 shadow-sm">
-            <p className="text-[9px] text-muted-foreground">💡 点击景点添加/移除 · 拖拽列表调整顺序</p>
+                <Pencil className="w-2.5 h-2.5" />修改
+              </button>
+            )}
           </div>
-        </div>
+        )}
 
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-4 py-2 border-t border-border">
-          {(["scenic","food","hotel"] as const).map((t) => {
+        <LeafletRouteMap
+          departurePoint={departurePoint}
+          routePoints={routePoints}
+          selectedPointId={selectedPoint?.id ?? null}
+          onSelectPoint={setSelectedPoint}
+        />
+
+        <div className="flex items-center justify-center gap-3 py-2 border-t border-border flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-meituan-green" />
+            <span className="text-[10px] text-muted-foreground">出发点</span>
+          </div>
+          {(["scenic", "food", "hotel"] as const).map((t) => {
             const tc = typeColor[t];
             const labels = { scenic: "景点", food: "美食", hotel: "酒店" };
             return (
@@ -258,37 +203,60 @@ const ChatRouteMap = ({
               </div>
             );
           })}
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-0 border-t-2 border-dashed border-primary" />
-            <span className="text-[10px] text-muted-foreground">路线</span>
-          </div>
         </div>
       </div>
 
-      {/* ── Timeline route list ── */}
-      <div className="bg-card rounded-xl border border-border shadow-card px-3 pt-3 pb-1">
-        <h4 className="text-xs font-bold mb-3 text-muted-foreground flex items-center gap-1.5">
-          <span className="w-1 h-3.5 rounded-full bg-primary inline-block" />
-          行程时间轴（可拖拽调整顺序）
-        </h4>
-        {routePoints.map((point, idx) => (
-          <RouteListItem
-            key={point.id}
-            point={point}
-            idx={idx}
-            isLast={idx === routePoints.length - 1}
-            dragOverIdx={dragOverIdx}
-            draggedIdx={draggedIdx}
-            onDragStart={() => handleDragStart(idx)}
-            onDragOver={(e) => handleDragOver(e, idx)}
-            onDrop={() => handleDrop(idx)}
-            onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
-            onRemove={() => onRemoveFromRoute(point.id)}
-          />
-        ))}
-      </div>
+      {(hasDeparture || hasRoute) && (
+        <div className="bg-card rounded-xl border border-border shadow-card px-3 pt-3 pb-1 overflow-hidden">
+          <h4 className="text-xs font-bold mb-3 text-muted-foreground flex items-center gap-1.5">
+            <span className="w-1 h-3.5 rounded-full bg-primary inline-block" />
+            路线时间轴
+          </h4>
 
-      {/* ── Point detail popup ── */}
+          {departurePoint && (
+            <div className="flex gap-2.5 mb-3">
+              <div className="flex flex-col items-center shrink-0 w-5 mt-0.5">
+                <div className="w-5 h-5 rounded-full bg-meituan-green flex items-center justify-center shadow-sm border-2 border-card">
+                  <span className="text-white text-[7px] font-bold">起</span>
+                </div>
+                {hasRoute && <div className="w-0.5 flex-1 mt-1 bg-border min-h-[20px]" />}
+              </div>
+              <div className="flex-1 min-w-0 flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border border-meituan-green/30 bg-meituan-green/5 mb-3 overflow-hidden">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] text-meituan-green font-medium">出发点</p>
+                  <p className="text-xs font-semibold leading-snug break-words">{departurePoint.label}</p>
+                </div>
+                {onEditDeparture && (
+                  <button
+                    type="button"
+                    onClick={onEditDeparture}
+                    className="flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-medium text-meituan-green hover:bg-meituan-green/15 shrink-0"
+                  >
+                    <Pencil className="w-2.5 h-2.5" />修改
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {routePoints.map((point, idx) => (
+            <RouteListItem
+              key={point.id}
+              point={point}
+              idx={idx}
+              isLast={idx === routePoints.length - 1}
+              dragOverIdx={dragOverIdx}
+              draggedIdx={draggedIdx}
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={() => handleDrop(idx)}
+              onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
+              onRemove={() => onRemoveFromRoute(point.id)}
+            />
+          ))}
+        </div>
+      )}
+
       <AnimatePresence>
         {selectedPoint && (
           <motion.div
@@ -312,7 +280,7 @@ const ChatRouteMap = ({
                         <p className="text-[11px] text-muted-foreground">{selectedPoint.description}</p>
                       </div>
                     </div>
-                    <button onClick={() => setSelectedPoint(null)} className="p-1 rounded hover:bg-muted">
+                    <button type="button" onClick={() => setSelectedPoint(null)} className="p-1 rounded hover:bg-muted">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -320,6 +288,7 @@ const ChatRouteMap = ({
                     <span className="text-xs text-meituan-red font-semibold">{selectedPoint.price}</span>
                     {selectedPoint.inRoute ? (
                       <button
+                        type="button"
                         onClick={() => { onRemoveFromRoute(selectedPoint.id); setSelectedPoint(null); }}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-meituan-red/10 text-meituan-red text-xs font-medium hover:bg-meituan-red/20 transition-colors"
                       >
@@ -327,6 +296,7 @@ const ChatRouteMap = ({
                       </button>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => { onAddToRoute(selectedPoint); setSelectedPoint(null); }}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-meituan-yellow-hover transition-colors"
                       >
@@ -341,7 +311,6 @@ const ChatRouteMap = ({
         )}
       </AnimatePresence>
 
-      {/* Nearby suggestions */}
       {nearbyPoints.length > 0 && (
         <div className="bg-card rounded-xl border border-border shadow-card p-3">
           <h4 className="text-xs font-bold mb-2 text-muted-foreground flex items-center gap-1.5">
@@ -355,6 +324,7 @@ const ChatRouteMap = ({
               return (
                 <button
                   key={point.id}
+                  type="button"
                   onClick={() => { onAddToRoute(point); }}
                   className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border ${tc.border} ${tc.text} bg-card hover:bg-muted transition-colors font-medium`}
                 >
@@ -373,4 +343,4 @@ const ChatRouteMap = ({
 };
 
 export default ChatRouteMap;
-export type { MapPoint };
+export type { MapPoint, MapDeparturePoint } from "@/types/map";
