@@ -9,7 +9,6 @@
 ## 文档
 
 - **[设计说明（≤2 页）](docs/DESIGN.md)**：Planning、工具链路、异常、前端与持久化
-- **[设计说明（人话版）](docs/DESIGN-PLAIN.md)**：与 DESIGN.md 同结构，每节附「人话」说明
 
 ## 快速启动
 
