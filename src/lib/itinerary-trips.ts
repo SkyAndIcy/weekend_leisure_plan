@@ -9,7 +9,7 @@ export interface ItineraryTrip {
   dates: string;
   days: DayPlan[];
   active: boolean;
-  favorited?: boolean;
+  favorited: boolean;
 }
 
 export function loadItineraryTrips(): ItineraryTrip[] {

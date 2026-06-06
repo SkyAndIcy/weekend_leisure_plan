@@ -58,7 +58,7 @@ export function rankWithDimensions(
           (c.scenario === "family" && poi.tags.includes("kids_menu") ? 8 : 0),
         distance: distanceScore(distanceKm, c.hardMaxDistanceKm),
         feasibility: feasibilityScore(poi),
-        areaMatch: areaMatchScore(poi, c.softLocationBlocks ?? c.locationBlocks),
+        areaMatch: areaMatchScore(poi, c.locationBlocks),
       };
       const totalScore =
         dimensions.relevance * 0.35 +

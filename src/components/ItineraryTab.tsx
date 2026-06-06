@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapPin, Utensils, Hotel, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronLeft, RefreshCw, Plus, Map as MapIcon, List, Trash2, RotateCcw, X, Heart, ShoppingCart, CircleDot, Bookmark } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { useCollections, type FavoriteTrip } from "@/contexts/collections-context";
+import { useCollections } from "@/contexts/collections-context";
 import { useLocation } from "@/hooks/use-location";
 import {
   ITINERARY_TRIPS_UPDATED_EVENT,
@@ -42,9 +42,8 @@ interface DayPlan {
   date: string;
   period: string;
   items: ItineraryItem[];
+  removedItems?: ItineraryItem[];
 }
-
-type Trip = FavoriteTrip & ItineraryTrip;
 
 const statusConfig = {
   unbooked: { icon: CircleDot, label: "未预定", className: "bg-primary/10 text-primary" },
@@ -82,7 +81,7 @@ const ItineraryTab = ({
   const [selectedItem, setSelectedItem] = useState<ItineraryItem | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAddTrip, setShowAddTrip] = useState(false);
-  const [trips, setTrips] = useState<Trip[]>(loadItineraryTrips);
+  const [trips, setTrips] = useState<ItineraryTrip[]>(loadItineraryTrips);
 
   const reloadTrips = useCallback(() => {
     setTrips(loadItineraryTrips());
@@ -241,7 +240,7 @@ const ItineraryTab = ({
 
   const handleAddTrip = () => {
     if (!newTitle.trim()) return;
-    const newTrip: Trip = {
+    const newTrip: ItineraryTrip = {
       id: Date.now().toString(),
       title: newTitle,
       dates: newDates || "待定",
@@ -265,7 +264,7 @@ const ItineraryTab = ({
   const unbookedCount = totalItems - bookedCount;
   const progressPct = totalItems > 0 ? Math.round((bookedCount / totalItems) * 100) : 0;
 
-  const handleViewFavorite = (trip: Trip) => {
+  const handleViewFavorite = (trip: ItineraryTrip) => {
     setTrips((prev) => {
       const deactivated = prev.map((t) => ({ ...t, active: false }));
       const exists = deactivated.some((t) => t.id === trip.id);
