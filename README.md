@@ -6,6 +6,8 @@
 
 **内网访问：** http://10.29.82.126:8081
 
+**公网访问：** https://payments-citysearch-pdas-christina.trycloudflare.com
+
 ## 文档
 
 - **[设计说明（≤2 页）](DESIGN.md)**：Planning、工具链路、异常、前端与持久化
