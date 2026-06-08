@@ -4,8 +4,6 @@
 
 ## 在线演示
 
-**内网访问：** [http://172.18.158.188:8081](http://172.18.158.188:8081)
-
 **公网访问：** [https://modeling-committee-seventh-mixture.trycloudflare.com](https://modeling-committee-seventh-mixture.trycloudflare.com)
 
 ## 文档
