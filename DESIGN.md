@@ -1,7 +1,7 @@
 # 周末喵 · 设计说明
 
 > **内网演示地址：** [http://10.29.82.126:8081](http://10.29.82.126:8081)  
-> **公网演示地址：** [https://payments-citysearch-pdas-christina.trycloudflare.com](https://payments-citysearch-pdas-christina.trycloudflare.com)
+> **公网演示地址：** [https://modeling-committee-seventh-mixture.trycloudflare.com](https://modeling-committee-seventh-mixture.trycloudflare.com)
 
 **目标**：将「自然语言 + 出发点」转为 4–6 小时可执行半日行程（玩 → 吃 → 可选加项），支持订座/换店/追问等闭环操作。  
 **技术栈**：React 18 + TypeScript + Vite · Supabase Edge Functions · Friday LLM（美团内部）· 高德地图 API  
