@@ -94,7 +94,7 @@
 cp .env.example .env   # 填入 FRIDAY_APP_ID 和 AMAP_KEY
 npm install && npm start   # http://localhost:8081
 
-# 内网共享
+# 内网共
 npx vite --host 0.0.0.0 --port 8081
 ```
 
