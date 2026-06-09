@@ -8,7 +8,7 @@
 
 ### 演示视频
 
-<video src="demo.mp4" controls width="100%"></video>
+<video src="https://raw.githubusercontent.com/SkyAndIcy/weekend_leisure_plan/main/demo.mp4" controls width="100%"></video>
 
 ## 文档
 
