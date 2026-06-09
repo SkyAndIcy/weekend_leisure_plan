@@ -6,6 +6,8 @@
 
 **公网访问：** [https://modeling-committee-seventh-mixture.trycloudflare.com](https://modeling-committee-seventh-mixture.trycloudflare.com)
 
+演示视频：
+
 ![演示动画](demo.gif)
 
 ## 文档
