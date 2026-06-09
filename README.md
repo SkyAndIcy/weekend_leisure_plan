@@ -6,6 +6,10 @@
 
 **公网访问：** [https://modeling-committee-seventh-mixture.trycloudflare.com](https://modeling-committee-seventh-mixture.trycloudflare.com)
 
+### 演示视频
+
+<video src="demo.mp4" controls width="100%"></video>
+
 ## 文档
 
 - **[设计说明（≤2 页）](DESIGN.md)**：Planning、工具链路、异常、前端与持久化
