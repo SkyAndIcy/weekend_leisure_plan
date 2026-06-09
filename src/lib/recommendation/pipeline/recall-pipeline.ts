@@ -5,7 +5,7 @@ import type { EffectiveConstraints, PipelineStageLog, RankedCandidate, RecallPoo
 import { SCENARIO_MIN_RELEVANCE } from "./types";
 
 const MMR_TOP_K = 8;
-const GEO_BUFFER_KM = 2;
+const GEO_BUFFER_KM = 1;
 
 function pushStage(
   stages: PipelineStageLog[],

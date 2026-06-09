@@ -54,7 +54,8 @@ export function extractConstraints(text: string): Constraints {
 
   let maxDistanceKm = 8;
   if (/别太远|不远|附近|就近|离家近/.test(t)) maxDistanceKm = 5;
-  if (/5\s*公里|五公里/.test(t)) maxDistanceKm = 5;
+  const distMatch = t.match(/(\d+)\s*(?:公里|km)/i);
+  if (distMatch) maxDistanceKm = Math.min(20, Math.max(1, parseInt(distMatch[1], 10)));
 
   let durationHours: [number, number] = [4, 6];
   const durRange = t.match(/(\d+)\s*[-~到至]\s*(\d+)\s*小时/);
