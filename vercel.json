@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "bun install",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/functions/v1/plan", "destination": "/api/plan" },
+    { "source": "/functions/v1/recommend", "destination": "/api/recommend" },
+    { "source": "/functions/v1/chat", "destination": "/api/chat" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

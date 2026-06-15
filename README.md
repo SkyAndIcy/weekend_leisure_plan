@@ -4,7 +4,7 @@
 
 ## 在线演示
 
-**公网访问：** [https://cant-true-coalition-sam.trycloudflare.com](https://cant-true-coalition-sam.trycloudflare.com)
+**公网访问：** [https://weekendmiao-catpaw.vercel.app](https://weekendmiao-catpaw.vercel.app)
 
 演示视频：
 

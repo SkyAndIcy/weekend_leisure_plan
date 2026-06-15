@@ -1,6 +1,6 @@
 # 周末喵 · 设计说明
 
-> **公网演示地址：** [https://cant-true-coalition-sam.trycloudflare.com](https://cant-true-coalition-sam.trycloudflare.com)
+> **公网演示地址：** [https://weekendmiao-catpaw.vercel.app](https://weekendmiao-catpaw.vercel.app)
 
 **目标**：将「自然语言 + 出发点」转为 4–6 小时可执行半日行程（玩 → 吃 → 可选加项），支持订座/换店/追问等闭环操作。  
 **技术栈**：React 18 + TypeScript + Vite · Supabase Edge Functions · Friday LLM（美团内部）· 高德地图 API  
